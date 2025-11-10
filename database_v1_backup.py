@@ -1,15 +1,6 @@
 import sqlite3
 from datetime import datetime
-from typing import List, Optional, Tuple, Dict
-
-# Point types
-POINT_TYPES = {
-    'physical': '💪',
-    'arts': '🎨',
-    'food_related': '🍳',
-    'educational': '📚',
-    'other': '⭐'
-}
+from typing import List, Optional, Tuple
 
 class Database:
     def __init__(self, db_path: str = "bot.db"):
@@ -33,34 +24,28 @@ class Database:
             )
         ''')
 
-        # Users table - now with typed points
+        # Users table
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS users (
                 telegram_id INTEGER PRIMARY KEY,
                 username TEXT,
                 first_name TEXT,
                 group_id INTEGER,
-                points_physical INTEGER DEFAULT 0,
-                points_arts INTEGER DEFAULT 0,
-                points_food_related INTEGER DEFAULT 0,
-                points_educational INTEGER DEFAULT 0,
-                points_other INTEGER DEFAULT 0,
+                points INTEGER DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (group_id) REFERENCES groups(id)
             )
         ''')
 
-        # Habits table - now with type
+        # Habits table (shared per group)
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS habits (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 group_id INTEGER NOT NULL,
                 name TEXT NOT NULL,
                 description TEXT,
-                habit_type TEXT NOT NULL DEFAULT 'other',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (group_id) REFERENCES groups(id),
-                CHECK (habit_type IN ('physical', 'arts', 'food_related', 'educational', 'other'))
+                FOREIGN KEY (group_id) REFERENCES groups(id)
             )
         ''')
 
@@ -78,22 +63,20 @@ class Database:
             )
         ''')
 
-        # Rewards table - now with point type
+        # Rewards table (each user has their own reward shop)
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS rewards (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 owner_id INTEGER NOT NULL,
                 name TEXT NOT NULL,
                 price INTEGER NOT NULL,
-                point_type TEXT NOT NULL DEFAULT 'other',
                 is_active INTEGER DEFAULT 1,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (owner_id) REFERENCES users(telegram_id),
-                CHECK (point_type IN ('physical', 'arts', 'food_related', 'educational', 'other'))
+                FOREIGN KEY (owner_id) REFERENCES users(telegram_id)
             )
         ''')
 
-        # Transactions table
+        # Transactions table (track reward purchases)
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS transactions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -101,7 +84,6 @@ class Database:
                 seller_id INTEGER NOT NULL,
                 reward_id INTEGER NOT NULL,
                 points INTEGER NOT NULL,
-                point_type TEXT NOT NULL,
                 transaction_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (buyer_id) REFERENCES users(telegram_id),
                 FOREIGN KEY (seller_id) REFERENCES users(telegram_id),
@@ -109,67 +91,7 @@ class Database:
             )
         ''')
 
-        # Point conversions table
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS point_conversions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL,
-                from_type TEXT NOT NULL,
-                to_type TEXT NOT NULL,
-                amount_from INTEGER NOT NULL,
-                amount_to INTEGER NOT NULL,
-                conversion_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users(telegram_id)
-            )
-        ''')
-
         conn.commit()
-        conn.close()
-
-    # Migration helper
-    def migrate_from_v1(self):
-        """Migrate old database to new schema"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-
-        # Check if old schema exists
-        cursor.execute("PRAGMA table_info(users)")
-        columns = [col[1] for col in cursor.fetchall()]
-
-        if 'points' in columns and 'points_physical' not in columns:
-            print("Migrating database to v2...")
-
-            # Add new point columns
-            cursor.execute('ALTER TABLE users ADD COLUMN points_physical INTEGER DEFAULT 0')
-            cursor.execute('ALTER TABLE users ADD COLUMN points_arts INTEGER DEFAULT 0')
-            cursor.execute('ALTER TABLE users ADD COLUMN points_food_related INTEGER DEFAULT 0')
-            cursor.execute('ALTER TABLE users ADD COLUMN points_educational INTEGER DEFAULT 0')
-            cursor.execute('ALTER TABLE users ADD COLUMN points_other INTEGER DEFAULT 0')
-
-            # Move old points to 'other' category
-            cursor.execute('UPDATE users SET points_other = points')
-
-            # Add habit_type column to habits if not exists
-            cursor.execute("PRAGMA table_info(habits)")
-            habit_columns = [col[1] for col in cursor.fetchall()]
-            if 'habit_type' not in habit_columns:
-                cursor.execute('ALTER TABLE habits ADD COLUMN habit_type TEXT NOT NULL DEFAULT "other"')
-
-            # Add point_type column to rewards if not exists
-            cursor.execute("PRAGMA table_info(rewards)")
-            reward_columns = [col[1] for col in cursor.fetchall()]
-            if 'point_type' not in reward_columns:
-                cursor.execute('ALTER TABLE rewards ADD COLUMN point_type TEXT NOT NULL DEFAULT "other"')
-
-            # Add point_type column to transactions if not exists
-            cursor.execute("PRAGMA table_info(transactions)")
-            transaction_columns = [col[1] for col in cursor.fetchall()]
-            if 'point_type' not in transaction_columns:
-                cursor.execute('ALTER TABLE transactions ADD COLUMN point_type TEXT NOT NULL DEFAULT "other"')
-
-            conn.commit()
-            print("Migration complete!")
-
         conn.close()
 
     # Group methods
@@ -216,32 +138,6 @@ class Database:
         conn.close()
         return user
 
-    def get_user_points(self, telegram_id: int) -> Dict[str, int]:
-        """Get user's points by type"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute('''
-            SELECT points_physical, points_arts, points_food_related, points_educational, points_other
-            FROM users WHERE telegram_id = ?
-        ''', (telegram_id,))
-        result = cursor.fetchone()
-        conn.close()
-
-        if result:
-            return {
-                'physical': result[0],
-                'arts': result[1],
-                'food_related': result[2],
-                'educational': result[3],
-                'other': result[4]
-            }
-        return {'physical': 0, 'arts': 0, 'food_related': 0, 'educational': 0, 'other': 0}
-
-    def get_user_total_points(self, telegram_id: int) -> int:
-        """Get total points across all types"""
-        points = self.get_user_points(telegram_id)
-        return sum(points.values())
-
     def join_group(self, telegram_id: int, group_id: int) -> bool:
         """Add user to a group"""
         conn = self.get_connection()
@@ -261,12 +157,12 @@ class Database:
         return members
 
     # Habit methods
-    def add_habit(self, group_id: int, name: str, habit_type: str, description: str = "") -> int:
+    def add_habit(self, group_id: int, name: str, description: str = "") -> int:
         """Add a new habit to a group"""
         conn = self.get_connection()
         cursor = conn.cursor()
-        cursor.execute('INSERT INTO habits (group_id, name, description, habit_type) VALUES (?, ?, ?, ?)',
-                      (group_id, name, description, habit_type))
+        cursor.execute('INSERT INTO habits (group_id, name, description) VALUES (?, ?, ?)',
+                      (group_id, name, description))
         habit_id = cursor.lastrowid
         conn.commit()
         conn.close()
@@ -281,12 +177,12 @@ class Database:
         conn.close()
         return habits
 
-    def update_habit(self, habit_id: int, name: str, habit_type: str, description: str = "") -> bool:
+    def update_habit(self, habit_id: int, name: str, description: str = "") -> bool:
         """Update a habit"""
         conn = self.get_connection()
         cursor = conn.cursor()
-        cursor.execute('UPDATE habits SET name = ?, description = ?, habit_type = ? WHERE id = ?',
-                      (name, description, habit_type, habit_id))
+        cursor.execute('UPDATE habits SET name = ?, description = ? WHERE id = ?',
+                      (name, description, habit_id))
         conn.commit()
         conn.close()
         return True
@@ -296,28 +192,17 @@ class Database:
         conn = self.get_connection()
         cursor = conn.cursor()
 
-        # Get habit type first
-        cursor.execute('SELECT habit_type FROM habits WHERE id = ?', (habit_id,))
-        habit = cursor.fetchone()
-        if not habit:
-            conn.close()
-            return False
-
-        habit_type = habit[0]
-        point_column = f'points_{habit_type}'
-
         # Get all users who completed this habit
         cursor.execute('SELECT DISTINCT user_id FROM habit_completions WHERE habit_id = ?', (habit_id,))
         affected_users = [row[0] for row in cursor.fetchall()]
 
-        # Count and subtract points for each user
+        # Count how many times each user completed this habit
         for user_id in affected_users:
             cursor.execute('SELECT COUNT(*) FROM habit_completions WHERE user_id = ? AND habit_id = ?',
                          (user_id, habit_id))
             count = cursor.fetchone()[0]
-            # Subtract those points from the specific point type
-            cursor.execute(f'UPDATE users SET {point_column} = {point_column} - ? WHERE telegram_id = ?',
-                         (count, user_id))
+            # Subtract those points
+            cursor.execute('UPDATE users SET points = points - ? WHERE telegram_id = ?', (count, user_id))
 
         # Delete all completions for this habit
         cursor.execute('DELETE FROM habit_completions WHERE habit_id = ?', (habit_id,))
@@ -337,25 +222,14 @@ class Database:
 
         conn = self.get_connection()
         cursor = conn.cursor()
-
-        # Get habit type
-        cursor.execute('SELECT habit_type FROM habits WHERE id = ?', (habit_id,))
-        habit = cursor.fetchone()
-        if not habit:
-            conn.close()
-            return False
-
-        habit_type = habit[0]
-        point_column = f'points_{habit_type}'
-
         try:
             cursor.execute('''
                 INSERT INTO habit_completions (user_id, habit_id, completion_date)
                 VALUES (?, ?, ?)
             ''', (user_id, habit_id, date))
 
-            # Award 1 point of the habit's type
-            cursor.execute(f'UPDATE users SET {point_column} = {point_column} + 1 WHERE telegram_id = ?', (user_id,))
+            # Award 1 point for completing the habit
+            cursor.execute('UPDATE users SET points = points + 1 WHERE telegram_id = ?', (user_id,))
             conn.commit()
             conn.close()
             return True
@@ -371,25 +245,14 @@ class Database:
 
         conn = self.get_connection()
         cursor = conn.cursor()
-
-        # Get habit type
-        cursor.execute('SELECT habit_type FROM habits WHERE id = ?', (habit_id,))
-        habit = cursor.fetchone()
-        if not habit:
-            conn.close()
-            return False
-
-        habit_type = habit[0]
-        point_column = f'points_{habit_type}'
-
         cursor.execute('''
             DELETE FROM habit_completions
             WHERE user_id = ? AND habit_id = ? AND completion_date = ?
         ''', (user_id, habit_id, date))
 
         if cursor.rowcount > 0:
-            # Remove 1 point of the habit's type
-            cursor.execute(f'UPDATE users SET {point_column} = {point_column} - 1 WHERE telegram_id = ?', (user_id,))
+            # Remove 1 point
+            cursor.execute('UPDATE users SET points = points - 1 WHERE telegram_id = ?', (user_id,))
             conn.commit()
             conn.close()
             return True
@@ -398,12 +261,12 @@ class Database:
 
     def get_user_completions_for_month(self, user_id: int, year: int, month: int) -> List[Tuple]:
         """Get all habit completions for a user in a specific month
-        Returns: (id, user_id, habit_id, completion_date, habit_name, habit_type)
+        Returns: (id, user_id, habit_id, completion_date, habit_name)
         """
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute('''
-            SELECT hc.id, hc.user_id, hc.habit_id, hc.completion_date, h.name as habit_name, h.habit_type
+            SELECT hc.id, hc.user_id, hc.habit_id, hc.completion_date, h.name as habit_name
             FROM habit_completions hc
             JOIN habits h ON hc.habit_id = h.id
             WHERE hc.user_id = ?
@@ -428,12 +291,12 @@ class Database:
         return completions
 
     # Reward methods
-    def add_reward(self, owner_id: int, name: str, price: int, point_type: str) -> int:
+    def add_reward(self, owner_id: int, name: str, price: int) -> int:
         """Add a new reward to user's shop"""
         conn = self.get_connection()
         cursor = conn.cursor()
-        cursor.execute('INSERT INTO rewards (owner_id, name, price, point_type) VALUES (?, ?, ?, ?)',
-                      (owner_id, name, price, point_type))
+        cursor.execute('INSERT INTO rewards (owner_id, name, price) VALUES (?, ?, ?)',
+                      (owner_id, name, price))
         reward_id = cursor.lastrowid
         conn.commit()
         conn.close()
@@ -462,18 +325,17 @@ class Database:
         conn = self.get_connection()
         cursor = conn.cursor()
 
-        # Get reward price and point type
-        cursor.execute('SELECT price, owner_id, point_type FROM rewards WHERE id = ? AND is_active = 1', (reward_id,))
+        # Get reward price
+        cursor.execute('SELECT price, owner_id FROM rewards WHERE id = ? AND is_active = 1', (reward_id,))
         result = cursor.fetchone()
         if not result:
             conn.close()
             return False
 
-        price, owner_id, point_type = result
-        point_column = f'points_{point_type}'
+        price, owner_id = result
 
-        # Check if buyer has enough points of the correct type
-        cursor.execute(f'SELECT {point_column} FROM users WHERE telegram_id = ?', (buyer_id,))
+        # Check if buyer has enough points
+        cursor.execute('SELECT points FROM users WHERE telegram_id = ?', (buyer_id,))
         buyer_points = cursor.fetchone()[0]
 
         if buyer_points < price:
@@ -481,12 +343,12 @@ class Database:
             return False
 
         # Process transaction
-        cursor.execute(f'UPDATE users SET {point_column} = {point_column} - ? WHERE telegram_id = ?', (price, buyer_id))
-        cursor.execute(f'UPDATE users SET {point_column} = {point_column} + ? WHERE telegram_id = ?', (price, seller_id))
+        cursor.execute('UPDATE users SET points = points - ? WHERE telegram_id = ?', (price, buyer_id))
+        cursor.execute('UPDATE users SET points = points + ? WHERE telegram_id = ?', (price, seller_id))
         cursor.execute('''
-            INSERT INTO transactions (buyer_id, seller_id, reward_id, points, point_type)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (buyer_id, seller_id, reward_id, price, point_type))
+            INSERT INTO transactions (buyer_id, seller_id, reward_id, points)
+            VALUES (?, ?, ?, ?)
+        ''', (buyer_id, seller_id, reward_id, price))
 
         conn.commit()
         conn.close()
@@ -507,54 +369,40 @@ class Database:
         conn.close()
         return transactions
 
-    # Point conversion methods
-    def convert_points(self, user_id: int, from_type: str, to_type: str, amount: int) -> bool:
-        """Convert points from one type to another (2:1 ratio)"""
-        if from_type == to_type or from_type not in POINT_TYPES or to_type not in POINT_TYPES:
-            return False
-
-        if amount < 2 or amount % 2 != 0:
-            return False  # Must be even number and at least 2
-
+    def recalculate_all_points(self) -> dict:
+        """Recalculate points for all users from scratch
+        Returns dict with user_id: (old_points, new_points)
+        """
         conn = self.get_connection()
         cursor = conn.cursor()
 
-        from_column = f'points_{from_type}'
-        to_column = f'points_{to_type}'
+        results = {}
 
-        # Check if user has enough points
-        cursor.execute(f'SELECT {from_column} FROM users WHERE telegram_id = ?', (user_id,))
-        current_points = cursor.fetchone()[0]
+        # Get all users
+        cursor.execute('SELECT telegram_id, points FROM users')
+        users = cursor.fetchall()
 
-        if current_points < amount:
-            conn.close()
-            return False
+        for user_id, old_points in users:
+            # Count habit completions
+            cursor.execute('SELECT COUNT(*) FROM habit_completions WHERE user_id = ?', (user_id,))
+            habit_points = cursor.fetchone()[0]
 
-        # Perform conversion (2:1 ratio)
-        converted_amount = amount // 2
+            # Calculate points from selling rewards
+            cursor.execute('SELECT SUM(points) FROM transactions WHERE seller_id = ?', (user_id,))
+            earned = cursor.fetchone()[0] or 0
 
-        cursor.execute(f'UPDATE users SET {from_column} = {from_column} - ? WHERE telegram_id = ?', (amount, user_id))
-        cursor.execute(f'UPDATE users SET {to_column} = {to_column} + ? WHERE telegram_id = ?', (converted_amount, user_id))
+            # Calculate points spent on buying rewards
+            cursor.execute('SELECT SUM(points) FROM transactions WHERE buyer_id = ?', (user_id,))
+            spent = cursor.fetchone()[0] or 0
 
-        # Log conversion
-        cursor.execute('''
-            INSERT INTO point_conversions (user_id, from_type, to_type, amount_from, amount_to)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (user_id, from_type, to_type, amount, converted_amount))
+            # New total
+            new_points = habit_points + earned - spent
+
+            # Update
+            cursor.execute('UPDATE users SET points = ? WHERE telegram_id = ?', (new_points, user_id))
+
+            results[user_id] = (old_points, new_points)
 
         conn.commit()
         conn.close()
-        return True
-
-    def get_user_conversions(self, user_id: int) -> List[Tuple]:
-        """Get all point conversions for a user"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        cursor.execute('''
-            SELECT * FROM point_conversions
-            WHERE user_id = ?
-            ORDER BY conversion_date DESC
-        ''', (user_id,))
-        conversions = cursor.fetchall()
-        conn.close()
-        return conversions
+        return results

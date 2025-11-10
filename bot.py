@@ -16,7 +16,7 @@ from telegram.ext import (
 )
 from telegram.warnings import PTBUserWarning
 
-from database import Database
+from database import Database, POINT_TYPES
 
 # Load environment variables
 load_dotenv()
@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 db = Database()
 
 # Conversation states
-CREATING_GROUP, JOINING_GROUP, ADDING_HABIT, EDITING_HABIT, ADDING_REWARD = range(5)
+CREATING_GROUP, JOINING_GROUP, ADDING_HABIT, ADDING_HABIT_TYPE, EDITING_HABIT, EDITING_HABIT_TYPE, ADDING_REWARD, ADDING_REWARD_TYPE, CONVERTING_POINTS_FROM, CONVERTING_POINTS_TO, CONVERTING_POINTS_AMOUNT = range(11)
 
 # Helper functions
 def get_main_menu_keyboard():
@@ -44,9 +44,34 @@ def get_main_menu_keyboard():
         [InlineKeyboardButton("My Habits", callback_data="my_habits")],
         [InlineKeyboardButton("My Stats", callback_data="my_stats")],
         [InlineKeyboardButton("Reward Shop", callback_data="reward_shop")],
-        [InlineKeyboardButton("My Rewards", callback_data="my_rewards")],
+        [InlineKeyboardButton("My Rewards Shop", callback_data="my_rewards")],
+        [InlineKeyboardButton("Convert Points", callback_data="convert_points")],
         [InlineKeyboardButton("Group Info", callback_data="group_info")],
     ]
+    return InlineKeyboardMarkup(keyboard)
+
+def format_points_display(points_dict):
+    """Format points dictionary for display"""
+    lines = []
+    for ptype, emoji in POINT_TYPES.items():
+        amount = points_dict.get(ptype, 0)
+        if amount > 0:
+            type_name = ptype.replace('_', ' ').title()
+            lines.append(f"{emoji} {type_name}: {amount}")
+
+    if not lines:
+        return "No points yet"
+    return "\n".join(lines)
+
+def get_habit_type_keyboard():
+    """Generate keyboard for habit type selection"""
+    keyboard = []
+    for ptype, emoji in POINT_TYPES.items():
+        type_name = ptype.replace('_', ' ').title()
+        keyboard.append([InlineKeyboardButton(
+            f"{emoji} {type_name}",
+            callback_data=f"habittype_{ptype}"
+        )])
     return InlineKeyboardMarkup(keyboard)
 
 # Command handlers
