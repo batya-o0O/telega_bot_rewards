@@ -64,7 +64,20 @@ def format_points_display(points_dict):
     return "\n".join(lines)
 
 def get_habit_type_keyboard():
-    """Generate keyboard for habit type selection"""
+    """Generate keyboard for habit type selection (excludes 'any')"""
+    keyboard = []
+    for ptype, emoji in POINT_TYPES.items():
+        if ptype == 'any':  # Skip 'any' for habits
+            continue
+        type_name = ptype.replace('_', ' ').title()
+        keyboard.append([InlineKeyboardButton(
+            f"{emoji} {type_name}",
+            callback_data=f"habittype_{ptype}"
+        )])
+    return InlineKeyboardMarkup(keyboard)
+
+def get_reward_point_type_keyboard():
+    """Generate keyboard for reward point type selection (includes 'any')"""
     keyboard = []
     for ptype, emoji in POINT_TYPES.items():
         type_name = ptype.replace('_', ' ').title()
@@ -296,7 +309,7 @@ async def add_habit_finish(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
-    habit_type = query.data.split('_')[1]  # Extract type from "habittype_physical"
+    habit_type = query.data.replace('habittype_', '')  # Extract type from "habittype_food_related"
     habit_name = context.user_data.get('new_habit_name')
     user_id = update.effective_user.id
     user_data = db.get_user(user_id)
@@ -378,7 +391,7 @@ async def edit_habit_finish(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     habit_id = context.user_data.get('editing_habit_id')
     new_name = context.user_data.get('editing_habit_name')
-    habit_type = query.data.split('_')[1]  # Extract type from "habittype_physical"
+    habit_type = query.data.replace('habittype_', '')  # Extract type from "habittype_food_related"
 
     db.update_habit(habit_id, new_name, habit_type)
 
@@ -879,7 +892,7 @@ async def add_reward_get_details(update: Update, context: ContextTypes.DEFAULT_T
 
         await update.message.reply_text(
             f"Great! Now select which type of points for '{name}' ({price} points):",
-            reply_markup=get_habit_type_keyboard()
+            reply_markup=get_reward_point_type_keyboard()
         )
         return ADDING_REWARD_TYPE
 
@@ -895,7 +908,7 @@ async def add_reward_finish(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
-    point_type = query.data.split('_')[1]  # Extract from "habittype_physical"
+    point_type = query.data.replace('habittype_', '')  # Extract from "habittype_food_related" or "habittype_any"
     name = context.user_data.get('new_reward_name')
     price = context.user_data.get('new_reward_price')
     user_id = update.effective_user.id
@@ -962,6 +975,8 @@ async def convert_points_start(update: Update, context: ContextTypes.DEFAULT_TYP
 
     keyboard = []
     for ptype, emoji in POINT_TYPES.items():
+        if ptype == 'any':  # Skip 'any' for conversions
+            continue
         if user_points.get(ptype, 0) >= 2:  # Need at least 2 to convert
             type_name = ptype.replace('_', ' ').title()
             keyboard.append([InlineKeyboardButton(
@@ -984,7 +999,7 @@ async def convert_points_select_to(update: Update, context: ContextTypes.DEFAULT
     query = update.callback_query
     await query.answer()
 
-    from_type = query.data.split('_')[1]
+    from_type = query.data.replace('convertfrom_', '')
     context.user_data['convert_from_type'] = from_type
 
     user_id = update.effective_user.id
@@ -999,6 +1014,8 @@ async def convert_points_select_to(update: Update, context: ContextTypes.DEFAULT
 
     keyboard = []
     for ptype, emoji in POINT_TYPES.items():
+        if ptype == 'any':  # Skip 'any' for conversions
+            continue
         if ptype != from_type:  # Can't convert to same type
             type_name = ptype.replace('_', ' ').title()
             keyboard.append([InlineKeyboardButton(
@@ -1016,7 +1033,7 @@ async def convert_points_select_amount(update: Update, context: ContextTypes.DEF
     query = update.callback_query
     await query.answer()
 
-    to_type = query.data.split('_')[1]
+    to_type = query.data.replace('convertto_', '')
     context.user_data['convert_to_type'] = to_type
 
     from_type = context.user_data.get('convert_from_type')
