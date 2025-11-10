@@ -355,15 +355,36 @@ async def edit_habit_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.edit_message_text("Please enter the new name for this habit:")
     return EDITING_HABIT
 
-async def edit_habit_finish(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Finish editing a habit"""
+async def edit_habit_get_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Get new habit name and ask for type"""
     new_name = update.message.text
     habit_id = context.user_data.get('editing_habit_id')
 
-    db.update_habit(habit_id, new_name)
+    # Store new name
+    context.user_data['editing_habit_name'] = new_name
 
     await update.message.reply_text(
-        f"Habit updated successfully!",
+        f"Great! Now select the type for '{new_name}':",
+        reply_markup=get_habit_type_keyboard()
+    )
+    return EDITING_HABIT_TYPE
+
+async def edit_habit_finish(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Finish editing a habit with type"""
+    query = update.callback_query
+    await query.answer()
+
+    habit_id = context.user_data.get('editing_habit_id')
+    new_name = context.user_data.get('editing_habit_name')
+    habit_type = query.data.split('_')[1]  # Extract type from "habittype_physical"
+
+    db.update_habit(habit_id, new_name, habit_type)
+
+    type_emoji = POINT_TYPES.get(habit_type, '⭐')
+    type_name = habit_type.replace('_', ' ').title()
+
+    await query.edit_message_text(
+        f"Habit '{new_name}' updated!\nType: {type_emoji} {type_name}",
         reply_markup=get_main_menu_keyboard()
     )
     return ConversationHandler.END
@@ -1124,7 +1145,8 @@ def main():
     edit_habit_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(edit_habit_start, pattern=r"^edit_habit_\d+$")],
         states={
-            EDITING_HABIT: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_habit_finish)],
+            EDITING_HABIT: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_habit_get_name)],
+            EDITING_HABIT_TYPE: [CallbackQueryHandler(edit_habit_finish, pattern=r"^habittype_\w+$")],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
         allow_reentry=True,
