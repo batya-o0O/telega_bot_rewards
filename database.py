@@ -30,6 +30,7 @@ class Database:
             CREATE TABLE IF NOT EXISTS groups (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL,
+                group_chat_id INTEGER,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
@@ -121,6 +122,24 @@ class Database:
                 amount_to INTEGER NOT NULL,
                 conversion_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (user_id) REFERENCES users(telegram_id)
+            )
+        ''')
+
+        # Habit streaks table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS habit_streaks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                habit_id INTEGER NOT NULL,
+                current_streak INTEGER DEFAULT 0,
+                best_streak INTEGER DEFAULT 0,
+                last_completion_date DATE,
+                milestone_7_announced BOOLEAN DEFAULT 0,
+                milestone_15_announced BOOLEAN DEFAULT 0,
+                milestone_30_announced BOOLEAN DEFAULT 0,
+                FOREIGN KEY (user_id) REFERENCES users(telegram_id),
+                FOREIGN KEY (habit_id) REFERENCES habits(id),
+                UNIQUE(user_id, habit_id)
             )
         ''')
 
@@ -655,3 +674,123 @@ class Database:
         conversions = cursor.fetchall()
         conn.close()
         return conversions
+
+    # Group chat management
+    def set_group_chat(self, group_id: int, chat_id: int) -> bool:
+        """Link a Telegram group chat to a reward group"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute('UPDATE groups SET group_chat_id = ? WHERE id = ?', (chat_id, group_id))
+        conn.commit()
+        conn.close()
+        return True
+
+    def get_group_chat_id(self, group_id: int) -> Optional[int]:
+        """Get the group chat ID for a reward group"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT group_chat_id FROM groups WHERE id = ?', (group_id,))
+        result = cursor.fetchone()
+        conn.close()
+        return result[0] if result and result[0] else None
+
+    # Streak management
+    def update_streak(self, user_id: int, habit_id: int, completion_date: str) -> Dict:
+        """Update habit streak and return streak info with milestone status"""
+        from datetime import datetime, timedelta
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        # Get or create streak record
+        cursor.execute('''
+            SELECT current_streak, best_streak, last_completion_date,
+                   milestone_7_announced, milestone_15_announced, milestone_30_announced
+            FROM habit_streaks
+            WHERE user_id = ? AND habit_id = ?
+        ''', (user_id, habit_id))
+        result = cursor.fetchone()
+
+        completion_dt = datetime.strptime(completion_date, '%Y-%m-%d').date()
+
+        if result:
+            current_streak, best_streak, last_date_str, m7, m15, m30 = result
+            last_date = datetime.strptime(last_date_str, '%Y-%m-%d').date() if last_date_str else None
+
+            # Check if this is a continuation of the streak
+            if last_date:
+                days_diff = (completion_dt - last_date).days
+                if days_diff == 1:
+                    # Continuation
+                    current_streak += 1
+                elif days_diff == 0:
+                    # Same day, no change
+                    conn.close()
+                    return {
+                        'current_streak': current_streak,
+                        'best_streak': best_streak,
+                        'new_milestone': None
+                    }
+                else:
+                    # Broken streak
+                    current_streak = 1
+                    m7 = m15 = m30 = 0  # Reset milestone announcements
+            else:
+                current_streak = 1
+        else:
+            # New streak
+            current_streak = 1
+            best_streak = 0
+            m7 = m15 = m30 = 0
+
+        # Update best streak
+        if current_streak > best_streak:
+            best_streak = current_streak
+
+        # Check for new milestones
+        new_milestone = None
+        if current_streak == 30 and not m30:
+            new_milestone = 30
+            m30 = 1
+        elif current_streak == 15 and not m15:
+            new_milestone = 15
+            m15 = 1
+        elif current_streak == 7 and not m7:
+            new_milestone = 7
+            m7 = 1
+
+        # Update or insert streak record
+        cursor.execute('''
+            INSERT OR REPLACE INTO habit_streaks
+            (user_id, habit_id, current_streak, best_streak, last_completion_date,
+             milestone_7_announced, milestone_15_announced, milestone_30_announced)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (user_id, habit_id, current_streak, best_streak, completion_date, m7, m15, m30))
+
+        conn.commit()
+        conn.close()
+
+        return {
+            'current_streak': current_streak,
+            'best_streak': best_streak,
+            'new_milestone': new_milestone
+        }
+
+    def get_habit_streak(self, user_id: int, habit_id: int) -> Optional[Dict]:
+        """Get streak info for a specific habit"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT current_streak, best_streak, last_completion_date
+            FROM habit_streaks
+            WHERE user_id = ? AND habit_id = ?
+        ''', (user_id, habit_id))
+        result = cursor.fetchone()
+        conn.close()
+
+        if result:
+            return {
+                'current_streak': result[0],
+                'best_streak': result[1],
+                'last_completion_date': result[2]
+            }
+        return None

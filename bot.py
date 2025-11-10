@@ -87,6 +87,16 @@ def get_reward_point_type_keyboard():
         )])
     return InlineKeyboardMarkup(keyboard)
 
+# Announcement helper
+async def send_group_announcement(context: ContextTypes.DEFAULT_TYPE, group_id: int, message: str):
+    """Send an announcement to the group chat if configured"""
+    chat_id = db.get_group_chat_id(group_id)
+    if chat_id:
+        try:
+            await context.bot.send_message(chat_id=chat_id, text=message)
+        except Exception as e:
+            logger.warning(f"Could not send announcement to group chat {chat_id}: {e}")
+
 # Command handlers
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /start command"""
@@ -137,6 +147,45 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         text,
         reply_markup=get_main_menu_keyboard()
+    )
+
+async def setgroupchat(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Link the current Telegram group chat to a reward group
+    Usage: /setgroupchat (use this command in the group chat you want to link)
+    """
+    # Check if this is a group chat
+    if update.effective_chat.type not in ['group', 'supergroup']:
+        await update.message.reply_text(
+            "❌ This command only works in group chats!\n\n"
+            "Add me to a Telegram group chat and use /setgroupchat there."
+        )
+        return
+
+    chat_id = update.effective_chat.id
+    user_id = update.effective_user.id
+
+    # Get user's reward group
+    user_data = db.get_user(user_id)
+    if not user_data or not user_data[3]:
+        await update.message.reply_text(
+            "❌ You need to join a reward group first!\n\n"
+            "Use /start in a private chat with me to join or create a group."
+        )
+        return
+
+    group_id = user_data[3]
+    group_data = db.get_group(group_id)
+
+    # Link the chat
+    db.set_group_chat(group_id, chat_id)
+
+    await update.message.reply_text(
+        f"✅ Success!\n\n"
+        f"This Telegram group chat is now linked to reward group '{group_data[1]}'.\n\n"
+        f"I'll post announcements here when:\n"
+        f"• Someone adds a new reward to their shop\n"
+        f"• Someone buys a reward\n"
+        f"• Someone reaches a streak milestone (7, 15, 30 days)"
     )
 
 # Group management
@@ -257,6 +306,30 @@ async def toggle_habit(update: Update, context: ContextTypes.DEFAULT_TYPE):
         db.unmark_habit_complete(user_id, habit_id, today)
     else:
         db.mark_habit_complete(user_id, habit_id, today)
+
+        # Update streak and check for milestones
+        streak_info = db.update_streak(user_id, habit_id, today)
+
+        # If milestone reached, announce it
+        if streak_info['new_milestone']:
+            user_data = db.get_user(user_id)
+            group_id = user_data[3]
+
+            # Get habit info
+            conn = db.get_connection()
+            cursor = conn.cursor()
+            cursor.execute('SELECT name FROM habits WHERE id = ?', (habit_id,))
+            habit_name = cursor.fetchone()[0]
+            conn.close()
+
+            user_name = update.effective_user.first_name or update.effective_user.username or "Someone"
+            milestone = streak_info['new_milestone']
+
+            message = f"🎉 Congratulations {user_name}!\n\n"
+            message += f"You've reached a {milestone}-day streak on '{habit_name}'! 🔥\n"
+            message += f"Keep up the amazing work!"
+
+            await send_group_announcement(context, group_id, message)
 
     # Refresh the habits view
     await my_habits(update, context)
@@ -985,6 +1058,18 @@ async def payment_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             logger.warning(f"Could not notify seller {seller_id}: {e}")
 
+        # Announce purchase to group
+        user_data = db.get_user(user_id)
+        group_id = user_data[3]
+        seller_data = db.get_user(seller_id)
+        seller_name = seller_data[2] or seller_data[1] or "Someone"
+
+        announcement = f"💰 Purchase Made!\n\n"
+        announcement += f"{buyer_name} bought '{reward_name}' from {seller_name}'s shop\n"
+        announcement += f"Price: {price} points (any combination)"
+
+        await send_group_announcement(context, group_id, announcement)
+
         # Clear context
         context.user_data.pop('buying_reward_id', None)
         context.user_data.pop('buying_reward_name', None)
@@ -1094,6 +1179,21 @@ async def buy_reward(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         except Exception as e:
             logger.warning(f"Could not notify seller {seller_id}: {e}")
+
+        # Announce purchase to group
+        user_data = db.get_user(user_id)
+        group_id = user_data[3]
+        seller_data = db.get_user(seller_id)
+        seller_name = seller_data[2] or seller_data[1] or "Someone"
+
+        type_emoji = POINT_TYPES.get(point_type, '⭐')
+        type_name = point_type.replace('_', ' ').title()
+
+        announcement = f"💰 Purchase Made!\n\n"
+        announcement += f"{buyer_name} bought '{reward_name}' from {seller_name}'s shop\n"
+        announcement += f"Price: {price} {type_emoji} {type_name} points"
+
+        await send_group_announcement(context, group_id, announcement)
     else:
         await query.edit_message_text(
             f"Not enough points! You need {price} points.",
@@ -1185,6 +1285,17 @@ async def add_reward_finish(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     type_emoji = POINT_TYPES.get(point_type, '⭐')
     type_name = point_type.replace('_', ' ').title()
+
+    # Announce new reward to group
+    user_data = db.get_user(user_id)
+    group_id = user_data[3]
+    user_name = update.effective_user.first_name or update.effective_user.username or "Someone"
+
+    announcement = f"🛍️ New Reward Available!\n\n"
+    announcement += f"{user_name} added a new reward to their shop:\n"
+    announcement += f"'{name}' - {price} {type_emoji} {type_name} points"
+
+    await send_group_announcement(context, group_id, announcement)
 
     await query.edit_message_text(
         f"Reward '{name}' added for {price} {type_emoji} {type_name} points!",
@@ -1411,6 +1522,7 @@ def main():
     # Command handlers
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("menu", menu))
+    application.add_handler(CommandHandler("setgroupchat", setgroupchat))
 
     # Group creation conversation
     create_group_conv = ConversationHandler(
