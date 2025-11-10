@@ -214,7 +214,7 @@ async def my_habits(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for habit in habits:
         habit_id = habit[0]
         habit_name = habit[2]
-        habit_type = habit[4] if len(habit) > 4 else 'other'  # habit_type is column 4
+        habit_type = habit[5] if len(habit) > 5 else 'other'  # habit_type is column 5
         is_completed = habit_id in completed_habit_ids
 
         type_emoji = POINT_TYPES.get(habit_type, '⭐')
@@ -333,7 +333,7 @@ async def edit_habit_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     keyboard = []
     for habit in habits:
-        habit_type = habit[4] if len(habit) > 4 else 'other'
+        habit_type = habit[5] if len(habit) > 5 else 'other'
         type_emoji = POINT_TYPES.get(habit_type, '⭐')
         keyboard.append([InlineKeyboardButton(
             f"{type_emoji} {habit[2]}",
@@ -407,7 +407,7 @@ async def delete_habit_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     keyboard = []
     for habit in habits:
-        habit_type = habit[4] if len(habit) > 4 else 'other'
+        habit_type = habit[5] if len(habit) > 5 else 'other'
         type_emoji = POINT_TYPES.get(habit_type, '⭐')
         keyboard.append([InlineKeyboardButton(
             f"❌ {type_emoji} {habit[2]}",
@@ -686,8 +686,9 @@ async def group_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     for member in members:
         name = member[2] or member[1] or f"User {member[0]}"
-        points = member[4]
-        text += f"- {name}: {points} points\n"
+        # Calculate total points from typed points (columns 6-10)
+        total_points = sum(member[6:11]) if len(member) > 10 else member[4]
+        text += f"- {name}: {total_points} points\n"
 
     keyboard = [[InlineKeyboardButton("Back to Menu", callback_data="back_to_menu")]]
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
@@ -719,8 +720,10 @@ async def reward_shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     keyboard.append([InlineKeyboardButton("Back to Menu", callback_data="back_to_menu")])
 
+    # Calculate total points from typed points
+    total_points = sum(user_data[6:11]) if len(user_data) > 10 else user_data[4]
     await query.edit_message_text(
-        f"Reward Shop\nYour points: {user_data[4]}\n\nSelect a member to view their rewards:",
+        f"Reward Shop\nYour points: {total_points}\n\nSelect a member to view their rewards:",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
@@ -790,6 +793,7 @@ async def buy_reward(update: Update, context: ContextTypes.DEFAULT_TYPE):
     success = db.buy_reward(user_id, seller_id, reward_id)
 
     if success:
+        # Notify the buyer
         await query.edit_message_text(
             f"Successfully purchased '{reward_name}' for {price} points!\n\n"
             "The seller will fulfill your reward.",
@@ -797,6 +801,18 @@ async def buy_reward(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 InlineKeyboardButton("Back to Menu", callback_data="back_to_menu")
             ]])
         )
+
+        # Notify the seller
+        buyer_name = update.effective_user.first_name or update.effective_user.username or "Someone"
+        try:
+            await context.bot.send_message(
+                chat_id=seller_id,
+                text=f"🎉 Great news! {buyer_name} just bought your reward:\n\n"
+                     f"'{reward_name}' for {price} points!\n\n"
+                     f"Don't forget to fulfill this reward for them."
+            )
+        except Exception as e:
+            logger.warning(f"Could not notify seller {seller_id}: {e}")
     else:
         await query.edit_message_text(
             f"Not enough points! You need {price} points.",
