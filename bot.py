@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 db = Database()
 
 # Conversation states
-CREATING_GROUP, JOINING_GROUP, ADDING_HABIT, ADDING_HABIT_TYPE, EDITING_HABIT, EDITING_HABIT_TYPE, ADDING_REWARD, ADDING_REWARD_TYPE, CONVERTING_POINTS_FROM, CONVERTING_POINTS_TO, CONVERTING_POINTS_AMOUNT = range(11)
+CREATING_GROUP, JOINING_GROUP, ADDING_HABIT, ADDING_HABIT_TYPE, EDITING_HABIT, EDITING_HABIT_TYPE, ADDING_REWARD, ADDING_REWARD_TYPE, CONVERTING_POINTS_FROM, CONVERTING_POINTS_TO, CONVERTING_POINTS_AMOUNT, BUYING_ANY_REWARD = range(12)
 
 # Helper functions
 def get_main_menu_keyboard():
@@ -782,6 +782,226 @@ async def view_shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
 
+async def payment_select_type(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Select a point type to allocate for payment"""
+    query = update.callback_query
+    await query.answer()
+
+    point_type = query.data.replace('payselect_', '')
+    user_id = update.effective_user.id
+    user_points = db.get_user_points(user_id)
+
+    available = user_points.get(point_type, 0)
+    allocated = context.user_data.get('payment_allocation', {}).get(point_type, 0)
+    remaining_available = available - allocated
+
+    price = context.user_data.get('buying_reward_price', 0)
+    current_total = sum(context.user_data.get('payment_allocation', {}).values())
+    remaining_needed = price - current_total
+
+    if remaining_available <= 0:
+        await query.answer("No more of this point type available!", show_alert=True)
+        return BUYING_ANY_REWARD
+
+    type_emoji = POINT_TYPES.get(point_type, '⭐')
+    type_name = point_type.replace('_', ' ').title()
+
+    text = f"How many {type_emoji} {type_name} points?\n\n"
+    text += f"Available: {remaining_available}\n"
+    text += f"Already allocated: {allocated}\n"
+    text += f"Still needed to reach {price}: {remaining_needed}"
+
+    keyboard = []
+    # Quick select buttons for common amounts
+    for amount in [1, 5, 10, remaining_available, remaining_needed]:
+        if amount > 0 and amount <= remaining_available and amount <= remaining_needed:
+            keyboard.append([InlineKeyboardButton(
+                f"+ {amount}",
+                callback_data=f"payamount_{point_type}_{amount}"
+            )])
+
+    keyboard.append([InlineKeyboardButton("« Back to payment", callback_data="payback")])
+
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+    return BUYING_ANY_REWARD
+
+async def payment_add_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Add specified amount of a point type to payment"""
+    query = update.callback_query
+    await query.answer()
+
+    parts = query.data.split('_')
+    point_type = '_'.join(parts[1:-1])  # Handle food_related
+    amount = int(parts[-1])
+
+    user_id = update.effective_user.id
+    user_points = db.get_user_points(user_id)
+
+    if 'payment_allocation' not in context.user_data:
+        context.user_data['payment_allocation'] = {}
+
+    current_allocated = context.user_data['payment_allocation'].get(point_type, 0)
+    available = user_points.get(point_type, 0)
+
+    # Check if we can allocate this amount
+    if current_allocated + amount > available:
+        await query.answer("Not enough points available!", show_alert=True)
+        return BUYING_ANY_REWARD
+
+    price = context.user_data.get('buying_reward_price', 0)
+    current_total = sum(context.user_data['payment_allocation'].values())
+
+    if current_total + amount > price:
+        await query.answer("This would exceed the total cost!", show_alert=True)
+        return BUYING_ANY_REWARD
+
+    # Add the amount
+    context.user_data['payment_allocation'][point_type] = current_allocated + amount
+
+    # Return to payment selection screen
+    return await show_payment_screen(update, context)
+
+async def show_payment_screen(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show the payment allocation screen"""
+    query = update.callback_query
+    user_id = update.effective_user.id
+
+    reward_name = context.user_data.get('buying_reward_name', 'Unknown')
+    price = context.user_data.get('buying_reward_price', 0)
+    allocation = context.user_data.get('payment_allocation', {})
+
+    user_points = db.get_user_points(user_id)
+    total_allocated = sum(allocation.values())
+
+    text = f"🌟 Flexible Payment for '{reward_name}'\n\n"
+    text += f"Total cost: {price} points\n"
+    text += f"Allocated: {total_allocated}/{price}\n\n"
+
+    if allocation:
+        text += "Your payment breakdown:\n"
+        for ptype, amount in allocation.items():
+            emoji = POINT_TYPES.get(ptype, '⭐')
+            pname = ptype.replace('_', ' ').title()
+            text += f"  {emoji} {pname}: {amount}\n"
+        text += "\n"
+
+    text += "Available points:\n"
+    for ptype, emoji in POINT_TYPES.items():
+        if ptype == 'any':
+            continue
+        available = user_points.get(ptype, 0)
+        allocated_this = allocation.get(ptype, 0)
+        remaining = available - allocated_this
+        if available > 0:
+            pname = ptype.replace('_', ' ').title()
+            text += f"  {emoji} {pname}: {remaining}/{available}\n"
+
+    keyboard = []
+
+    # Show buttons for types with available points
+    for ptype, emoji in POINT_TYPES.items():
+        if ptype == 'any':
+            continue
+        available = user_points.get(ptype, 0)
+        allocated_this = allocation.get(ptype, 0)
+        remaining = available - allocated_this
+        if remaining > 0 and total_allocated < price:
+            pname = ptype.replace('_', ' ').title()
+            keyboard.append([InlineKeyboardButton(
+                f"{emoji} {pname} ({remaining} available)",
+                callback_data=f"payselect_{ptype}"
+            )])
+
+    # Confirm button (enabled only if exact amount)
+    if total_allocated == price:
+        keyboard.append([InlineKeyboardButton("✅ Confirm Payment", callback_data="payconfirm")])
+    else:
+        keyboard.append([InlineKeyboardButton(f"⏸ Need {price - total_allocated} more", callback_data="paynoop")])
+
+    # Clear allocation button
+    if allocation:
+        keyboard.append([InlineKeyboardButton("🔄 Clear allocation", callback_data="payclear")])
+
+    keyboard.append([InlineKeyboardButton("❌ Cancel", callback_data="reward_shop")])
+
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+    return BUYING_ANY_REWARD
+
+async def payment_clear(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Clear the payment allocation"""
+    query = update.callback_query
+    await query.answer("Payment cleared!")
+
+    context.user_data['payment_allocation'] = {}
+    return await show_payment_screen(update, context)
+
+async def payment_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Confirm and process the custom payment"""
+    query = update.callback_query
+    await query.answer()
+
+    user_id = update.effective_user.id
+    reward_id = context.user_data.get('buying_reward_id')
+    reward_name = context.user_data.get('buying_reward_name')
+    price = context.user_data.get('buying_reward_price')
+    seller_id = context.user_data.get('buying_seller_id')
+    allocation = context.user_data.get('payment_allocation', {})
+
+    total_allocated = sum(allocation.values())
+
+    if total_allocated != price:
+        await query.answer("Payment amount doesn't match price!", show_alert=True)
+        return BUYING_ANY_REWARD
+
+    # Process custom payment
+    success = db.buy_reward_custom(user_id, seller_id, reward_id, allocation)
+
+    if success:
+        # Show success message
+        payment_details = "\n".join([
+            f"  {POINT_TYPES.get(ptype, '⭐')} {ptype.replace('_', ' ').title()}: {amount}"
+            for ptype, amount in allocation.items()
+        ])
+
+        await query.edit_message_text(
+            f"✅ Successfully purchased '{reward_name}'!\n\n"
+            f"Payment breakdown:\n{payment_details}\n\n"
+            "The seller will fulfill your reward.",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("Back to Menu", callback_data="back_to_menu")
+            ]])
+        )
+
+        # Notify seller
+        buyer_name = update.effective_user.first_name or update.effective_user.username or "Someone"
+        try:
+            await context.bot.send_message(
+                chat_id=seller_id,
+                text=f"🎉 Great news! {buyer_name} just bought your reward:\n\n"
+                     f"'{reward_name}' for {price} points!\n\n"
+                     f"Payment breakdown:\n{payment_details}\n\n"
+                     f"Don't forget to fulfill this reward for them."
+            )
+        except Exception as e:
+            logger.warning(f"Could not notify seller {seller_id}: {e}")
+
+        # Clear context
+        context.user_data.pop('buying_reward_id', None)
+        context.user_data.pop('buying_reward_name', None)
+        context.user_data.pop('buying_reward_price', None)
+        context.user_data.pop('buying_seller_id', None)
+        context.user_data.pop('payment_allocation', None)
+
+        return ConversationHandler.END
+    else:
+        await query.edit_message_text(
+            "❌ Payment failed! Please try again.",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("Back", callback_data="reward_shop")
+            ]])
+        )
+        return ConversationHandler.END
+
 async def buy_reward(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Buy a reward"""
     query = update.callback_query
@@ -793,7 +1013,7 @@ async def buy_reward(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Get reward info
     conn = db.get_connection()
     cursor = conn.cursor()
-    cursor.execute('SELECT owner_id, name, price FROM rewards WHERE id = ?', (reward_id,))
+    cursor.execute('SELECT owner_id, name, price, point_type FROM rewards WHERE id = ?', (reward_id,))
     reward = cursor.fetchone()
     conn.close()
 
@@ -801,8 +1021,56 @@ async def buy_reward(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("Reward not found.")
         return
 
-    seller_id, reward_name, price = reward
+    seller_id, reward_name, price, point_type = reward
 
+    # If point_type is 'any', let user choose how to pay
+    if point_type == 'any':
+        # Store reward info for payment flow
+        context.user_data['buying_reward_id'] = reward_id
+        context.user_data['buying_reward_name'] = reward_name
+        context.user_data['buying_reward_price'] = price
+        context.user_data['buying_seller_id'] = seller_id
+        context.user_data['payment_allocation'] = {}  # Will store {point_type: amount}
+
+        # Show payment selection
+        user_points = db.get_user_points(user_id)
+        total_points = sum(user_points.values())
+
+        if total_points < price:
+            await query.edit_message_text(
+                f"Not enough points! You need {price} points but only have {total_points} total.",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("Back", callback_data="reward_shop")
+                ]])
+            )
+            return
+
+        text = f"🌟 Flexible Payment for '{reward_name}'\n\n"
+        text += f"Total cost: {price} points\n"
+        text += f"Your points:\n{format_points_display(user_points)}\n"
+        text += f"Total available: {total_points}\n\n"
+        text += "Choose how you want to pay:\n"
+        text += "Click a point type to allocate points."
+
+        keyboard = []
+        for ptype, emoji in POINT_TYPES.items():
+            if ptype == 'any':
+                continue
+            available = user_points.get(ptype, 0)
+            if available > 0:
+                type_name = ptype.replace('_', ' ').title()
+                keyboard.append([InlineKeyboardButton(
+                    f"{emoji} {type_name} ({available} available)",
+                    callback_data=f"payselect_{ptype}"
+                )])
+
+        keyboard.append([InlineKeyboardButton("✅ Confirm Payment (0/{})".format(price), callback_data="payconfirm")])
+        keyboard.append([InlineKeyboardButton("❌ Cancel", callback_data="reward_shop")])
+
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+        return BUYING_ANY_REWARD
+
+    # Original flow for specific point types
     success = db.buy_reward(user_id, seller_id, reward_id)
 
     if success:
@@ -1231,6 +1499,13 @@ def main():
     application.add_handler(CallbackQueryHandler(reward_shop, pattern="^reward_shop$"))
     application.add_handler(CallbackQueryHandler(view_shop, pattern=r"^view_shop_\d+$"))
     application.add_handler(CallbackQueryHandler(buy_reward, pattern=r"^buy_reward_\d+$"))
+
+    # Payment selection handlers (for 'any' rewards)
+    application.add_handler(CallbackQueryHandler(payment_select_type, pattern=r"^payselect_\w+$"))
+    application.add_handler(CallbackQueryHandler(payment_add_amount, pattern=r"^payamount_"))
+    application.add_handler(CallbackQueryHandler(show_payment_screen, pattern="^payback$"))
+    application.add_handler(CallbackQueryHandler(payment_clear, pattern="^payclear$"))
+    application.add_handler(CallbackQueryHandler(payment_confirm, pattern="^payconfirm$"))
 
     application.add_handler(CallbackQueryHandler(my_rewards, pattern="^my_rewards$"))
     application.add_handler(CallbackQueryHandler(delete_reward_list, pattern="^delete_reward_list$"))

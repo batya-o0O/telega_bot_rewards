@@ -544,6 +544,51 @@ class Database:
         conn.close()
         return True
 
+    def buy_reward_custom(self, buyer_id: int, seller_id: int, reward_id: int, allocation: Dict[str, int]) -> bool:
+        """Process a reward purchase with custom point allocation (for 'any' type rewards)"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        # Get reward info
+        cursor.execute('SELECT price, owner_id FROM rewards WHERE id = ? AND is_active = 1', (reward_id,))
+        result = cursor.fetchone()
+        if not result:
+            conn.close()
+            return False
+
+        price, owner_id = result
+
+        # Verify the allocation totals to the price
+        if sum(allocation.values()) != price:
+            conn.close()
+            return False
+
+        # Verify buyer has enough of each point type
+        user_points = self.get_user_points(buyer_id)
+        for ptype, amount in allocation.items():
+            if user_points.get(ptype, 0) < amount:
+                conn.close()
+                return False
+
+        # Process the transaction
+        for ptype, amount in allocation.items():
+            # Deduct from buyer
+            cursor.execute(f'UPDATE users SET points_{ptype} = points_{ptype} - ? WHERE telegram_id = ?',
+                          (amount, buyer_id))
+            # Add to seller
+            cursor.execute(f'UPDATE users SET points_{ptype} = points_{ptype} + ? WHERE telegram_id = ?',
+                          (amount, seller_id))
+
+        # Record transaction
+        cursor.execute('''
+            INSERT INTO transactions (buyer_id, seller_id, reward_id, points, point_type)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (buyer_id, seller_id, reward_id, price, 'any'))
+
+        conn.commit()
+        conn.close()
+        return True
+
     def get_user_transactions(self, user_id: int) -> List[Tuple]:
         """Get all transactions for a user"""
         conn = self.get_connection()
