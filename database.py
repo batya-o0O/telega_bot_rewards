@@ -8,7 +8,8 @@ POINT_TYPES = {
     'arts': '🎨',
     'food_related': '🍳',
     'educational': '📚',
-    'other': '⭐'
+    'other': '⭐',
+    'any': '🌟'
 }
 
 class Database:
@@ -470,23 +471,74 @@ class Database:
             return False
 
         price, owner_id, point_type = result
-        point_column = f'points_{point_type}'
 
-        # Check if buyer has enough points of the correct type
-        cursor.execute(f'SELECT {point_column} FROM users WHERE telegram_id = ?', (buyer_id,))
-        buyer_points = cursor.fetchone()[0]
+        # If point_type is 'any', buyer can use any combination of points
+        if point_type == 'any':
+            # Get all buyer's points
+            cursor.execute('''
+                SELECT points_physical, points_arts, points_food_related,
+                       points_educational, points_other
+                FROM users WHERE telegram_id = ?
+            ''', (buyer_id,))
+            buyer_points = cursor.fetchone()
 
-        if buyer_points < price:
-            conn.close()
-            return False
+            if not buyer_points:
+                conn.close()
+                return False
 
-        # Process transaction
-        cursor.execute(f'UPDATE users SET {point_column} = {point_column} - ? WHERE telegram_id = ?', (price, buyer_id))
-        cursor.execute(f'UPDATE users SET {point_column} = {point_column} + ? WHERE telegram_id = ?', (price, seller_id))
-        cursor.execute('''
-            INSERT INTO transactions (buyer_id, seller_id, reward_id, points, point_type)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (buyer_id, seller_id, reward_id, price, point_type))
+            total_points = sum(buyer_points)
+
+            if total_points < price:
+                conn.close()
+                return False
+
+            # Deduct points in order: physical, arts, food_related, educational, other
+            remaining = price
+            point_types = ['physical', 'arts', 'food_related', 'educational', 'other']
+            deductions = {}
+
+            for i, ptype in enumerate(point_types):
+                available = buyer_points[i]
+                if available > 0 and remaining > 0:
+                    deduct = min(available, remaining)
+                    deductions[ptype] = deduct
+                    remaining -= deduct
+
+            # Apply deductions to buyer
+            for ptype, amount in deductions.items():
+                cursor.execute(f'UPDATE users SET points_{ptype} = points_{ptype} - ? WHERE telegram_id = ?',
+                              (amount, buyer_id))
+
+            # Give points to seller (distributed proportionally)
+            for ptype, amount in deductions.items():
+                cursor.execute(f'UPDATE users SET points_{ptype} = points_{ptype} + ? WHERE telegram_id = ?',
+                              (amount, seller_id))
+
+            # Record transaction
+            cursor.execute('''
+                INSERT INTO transactions (buyer_id, seller_id, reward_id, points, point_type)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (buyer_id, seller_id, reward_id, price, 'any'))
+
+        else:
+            # Original logic for specific point type
+            point_column = f'points_{point_type}'
+
+            # Check if buyer has enough points of the correct type
+            cursor.execute(f'SELECT {point_column} FROM users WHERE telegram_id = ?', (buyer_id,))
+            buyer_points = cursor.fetchone()[0]
+
+            if buyer_points < price:
+                conn.close()
+                return False
+
+            # Process transaction
+            cursor.execute(f'UPDATE users SET {point_column} = {point_column} - ? WHERE telegram_id = ?', (price, buyer_id))
+            cursor.execute(f'UPDATE users SET {point_column} = {point_column} + ? WHERE telegram_id = ?', (price, seller_id))
+            cursor.execute('''
+                INSERT INTO transactions (buyer_id, seller_id, reward_id, points, point_type)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (buyer_id, seller_id, reward_id, price, point_type))
 
         conn.commit()
         conn.close()

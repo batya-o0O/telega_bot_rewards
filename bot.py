@@ -333,8 +333,10 @@ async def edit_habit_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     keyboard = []
     for habit in habits:
+        habit_type = habit[4] if len(habit) > 4 else 'other'
+        type_emoji = POINT_TYPES.get(habit_type, '⭐')
         keyboard.append([InlineKeyboardButton(
-            habit[2],
+            f"{type_emoji} {habit[2]}",
             callback_data=f"edit_habit_{habit[0]}"
         )])
     keyboard.append([InlineKeyboardButton("Back", callback_data="manage_habits")])
@@ -405,8 +407,10 @@ async def delete_habit_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     keyboard = []
     for habit in habits:
+        habit_type = habit[4] if len(habit) > 4 else 'other'
+        type_emoji = POINT_TYPES.get(habit_type, '⭐')
         keyboard.append([InlineKeyboardButton(
-            f"❌ {habit[2]}",
+            f"❌ {type_emoji} {habit[2]}",
             callback_data=f"confirm_delete_habit_{habit[0]}"
         )])
     keyboard.append([InlineKeyboardButton("Back", callback_data="manage_habits")])
