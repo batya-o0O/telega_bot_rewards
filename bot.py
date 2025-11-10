@@ -201,13 +201,15 @@ async def my_habits(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for habit in habits:
         habit_id = habit[0]
         habit_name = habit[2]
+        habit_type = habit[4] if len(habit) > 4 else 'other'  # habit_type is column 4
         is_completed = habit_id in completed_habit_ids
 
+        type_emoji = POINT_TYPES.get(habit_type, '⭐')
         status = "✅" if is_completed else "⬜"
-        text += f"{status} {habit_name}\n"
+        text += f"{status} {type_emoji} {habit_name}\n"
 
         callback_data = f"toggle_habit_{habit_id}"
-        keyboard.append([InlineKeyboardButton(f"{status} {habit_name}", callback_data=callback_data)])
+        keyboard.append([InlineKeyboardButton(f"{status} {type_emoji} {habit_name}", callback_data=callback_data)])
 
     keyboard.append([InlineKeyboardButton("Manage Habits", callback_data="manage_habits")])
     keyboard.append([InlineKeyboardButton("Back to Menu", callback_data="back_to_menu")])
@@ -257,8 +259,8 @@ async def add_habit_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.edit_message_text("Please enter the habit name (e.g., 'Read 20 pages'):")
     return ADDING_HABIT
 
-async def add_habit_finish(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Finish adding a habit"""
+async def add_habit_get_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Get habit name and ask for type"""
     habit_name = update.message.text
     user_id = update.effective_user.id
     user_data = db.get_user(user_id)
@@ -267,11 +269,37 @@ async def add_habit_finish(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("You need to join a group first!")
         return ConversationHandler.END
 
-    group_id = user_data[3]
-    db.add_habit(group_id, habit_name)
+    # Store habit name in context
+    context.user_data['new_habit_name'] = habit_name
 
     await update.message.reply_text(
-        f"Habit '{habit_name}' added successfully!",
+        f"Great! Now select the type for '{habit_name}':",
+        reply_markup=get_habit_type_keyboard()
+    )
+    return ADDING_HABIT_TYPE
+
+async def add_habit_finish(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Finish adding a habit with selected type"""
+    query = update.callback_query
+    await query.answer()
+
+    habit_type = query.data.split('_')[1]  # Extract type from "habittype_physical"
+    habit_name = context.user_data.get('new_habit_name')
+    user_id = update.effective_user.id
+    user_data = db.get_user(user_id)
+
+    if not user_data or not user_data[3]:
+        await query.edit_message_text("You need to join a group first!")
+        return ConversationHandler.END
+
+    group_id = user_data[3]
+    db.add_habit(group_id, habit_name, habit_type)
+
+    type_emoji = POINT_TYPES.get(habit_type, '⭐')
+    type_name = habit_type.replace('_', ' ').title()
+
+    await query.edit_message_text(
+        f"Habit '{habit_name}' added successfully!\nType: {type_emoji} {type_name}",
         reply_markup=get_main_menu_keyboard()
     )
     return ConversationHandler.END
@@ -670,24 +698,29 @@ async def view_shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     owner_name = owner_data[2] or owner_data[1] or f"User {owner_id}"
     rewards = db.get_user_rewards(owner_id)
+    user_points = db.get_user_points(user_id)
 
     if not rewards:
         text = f"{owner_name}'s Shop\n\nNo rewards available."
         keyboard = [[InlineKeyboardButton("Back", callback_data="reward_shop")]]
     else:
-        text = f"{owner_name}'s Shop\nYour points: {user_data[4]}\n\n"
+        text = f"{owner_name}'s Shop\n\nYour Points:\n{format_points_display(user_points)}\n\n"
         keyboard = []
 
         for reward in rewards:
             reward_id = reward[0]
             reward_name = reward[2]
             price = reward[3]
+            point_type = reward[6] if len(reward) > 6 else 'other'  # point_type column
 
-            text += f"{reward_name} - {price} points\n"
+            type_emoji = POINT_TYPES.get(point_type, '⭐')
+            type_name = point_type.replace('_', ' ').title()
+
+            text += f"{reward_name} - {price} {type_emoji} {type_name}\n"
 
             if user_id != owner_id:  # Can't buy from yourself
                 keyboard.append([InlineKeyboardButton(
-                    f"Buy: {reward_name} ({price} pts)",
+                    f"Buy: {reward_name} ({price} {type_emoji})",
                     callback_data=f"buy_reward_{reward_id}"
                 )])
 
@@ -770,8 +803,8 @@ async def add_reward_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return ADDING_REWARD
 
-async def add_reward_finish(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Finish adding a reward"""
+async def add_reward_get_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Get reward details and ask for point type"""
     text = update.message.text
     user_id = update.effective_user.id
 
@@ -786,19 +819,43 @@ async def add_reward_finish(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if price < 1:
             raise ValueError
 
-        db.add_reward(user_id, name, price)
+        # Store reward details in context
+        context.user_data['new_reward_name'] = name
+        context.user_data['new_reward_price'] = price
 
         await update.message.reply_text(
-            f"Reward '{name}' added for {price} points!",
-            reply_markup=get_main_menu_keyboard()
+            f"Great! Now select which type of points for '{name}' ({price} points):",
+            reply_markup=get_habit_type_keyboard()
         )
-        return ConversationHandler.END
+        return ADDING_REWARD_TYPE
+
     except (ValueError, IndexError):
         await update.message.reply_text(
             "Invalid format. Please use: Name | Price\n"
             "Example: Cooking your favourite dish | 30"
         )
         return ADDING_REWARD
+
+async def add_reward_finish(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Finish adding a reward with selected point type"""
+    query = update.callback_query
+    await query.answer()
+
+    point_type = query.data.split('_')[1]  # Extract from "habittype_physical"
+    name = context.user_data.get('new_reward_name')
+    price = context.user_data.get('new_reward_price')
+    user_id = update.effective_user.id
+
+    db.add_reward(user_id, name, price, point_type)
+
+    type_emoji = POINT_TYPES.get(point_type, '⭐')
+    type_name = point_type.replace('_', ' ').title()
+
+    await query.edit_message_text(
+        f"Reward '{name}' added for {price} {type_emoji} {type_name} points!",
+        reply_markup=get_main_menu_keyboard()
+    )
+    return ConversationHandler.END
 
 async def delete_reward_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show list of rewards to delete"""
@@ -896,7 +953,8 @@ def main():
     add_habit_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(add_habit_start, pattern="^add_habit$")],
         states={
-            ADDING_HABIT: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_habit_finish)],
+            ADDING_HABIT: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_habit_get_name)],
+            ADDING_HABIT_TYPE: [CallbackQueryHandler(add_habit_finish, pattern=r"^habittype_\w+$")],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
         allow_reentry=True,
@@ -918,7 +976,8 @@ def main():
     add_reward_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(add_reward_start, pattern="^add_reward$")],
         states={
-            ADDING_REWARD: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_reward_finish)],
+            ADDING_REWARD: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_reward_get_details)],
+            ADDING_REWARD_TYPE: [CallbackQueryHandler(add_reward_finish, pattern=r"^habittype_\w+$")],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
         allow_reentry=True,
