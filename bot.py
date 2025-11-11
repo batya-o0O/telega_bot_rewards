@@ -17,6 +17,19 @@ from telegram.ext import (
 from telegram.warnings import PTBUserWarning
 
 from database import Database, POINT_TYPES
+from constants import (
+    CREATING_GROUP, JOINING_GROUP, ADDING_HABIT, ADDING_HABIT_TYPE,
+    EDITING_HABIT, EDITING_HABIT_TYPE, ADDING_REWARD, ADDING_REWARD_TYPE,
+    CONVERTING_POINTS_FROM, CONVERTING_POINTS_TO, CONVERTING_POINTS_AMOUNT,
+    BUYING_ANY_REWARD
+)
+from utils import (
+    get_main_menu_keyboard,
+    get_habit_type_keyboard,
+    get_reward_point_type_keyboard,
+    format_points_display,
+    send_group_announcement
+)
 
 # Load environment variables
 load_dotenv()
@@ -33,69 +46,6 @@ logger = logging.getLogger(__name__)
 
 # Initialize database
 db = Database()
-
-# Conversation states
-CREATING_GROUP, JOINING_GROUP, ADDING_HABIT, ADDING_HABIT_TYPE, EDITING_HABIT, EDITING_HABIT_TYPE, ADDING_REWARD, ADDING_REWARD_TYPE, CONVERTING_POINTS_FROM, CONVERTING_POINTS_TO, CONVERTING_POINTS_AMOUNT, BUYING_ANY_REWARD = range(12)
-
-# Helper functions
-def get_main_menu_keyboard():
-    """Generate main menu keyboard"""
-    keyboard = [
-        [InlineKeyboardButton("My Habits", callback_data="my_habits")],
-        [InlineKeyboardButton("My Stats", callback_data="my_stats")],
-        [InlineKeyboardButton("Reward Shop", callback_data="reward_shop")],
-        [InlineKeyboardButton("My Rewards Shop", callback_data="my_rewards")],
-        [InlineKeyboardButton("Convert Points", callback_data="convert_points")],
-        [InlineKeyboardButton("Group Info", callback_data="group_info")],
-    ]
-    return InlineKeyboardMarkup(keyboard)
-
-def format_points_display(points_dict):
-    """Format points dictionary for display"""
-    lines = []
-    for ptype, emoji in POINT_TYPES.items():
-        amount = points_dict.get(ptype, 0)
-        if amount > 0:
-            type_name = ptype.replace('_', ' ').title()
-            lines.append(f"{emoji} {type_name}: {amount}")
-
-    if not lines:
-        return "No points yet"
-    return "\n".join(lines)
-
-def get_habit_type_keyboard():
-    """Generate keyboard for habit type selection (excludes 'any')"""
-    keyboard = []
-    for ptype, emoji in POINT_TYPES.items():
-        if ptype == 'any':  # Skip 'any' for habits
-            continue
-        type_name = ptype.replace('_', ' ').title()
-        keyboard.append([InlineKeyboardButton(
-            f"{emoji} {type_name}",
-            callback_data=f"habittype_{ptype}"
-        )])
-    return InlineKeyboardMarkup(keyboard)
-
-def get_reward_point_type_keyboard():
-    """Generate keyboard for reward point type selection (includes 'any')"""
-    keyboard = []
-    for ptype, emoji in POINT_TYPES.items():
-        type_name = ptype.replace('_', ' ').title()
-        keyboard.append([InlineKeyboardButton(
-            f"{emoji} {type_name}",
-            callback_data=f"habittype_{ptype}"
-        )])
-    return InlineKeyboardMarkup(keyboard)
-
-# Announcement helper
-async def send_group_announcement(context: ContextTypes.DEFAULT_TYPE, group_id: int, message: str):
-    """Send an announcement to the group chat if configured"""
-    chat_id = db.get_group_chat_id(group_id)
-    if chat_id:
-        try:
-            await context.bot.send_message(chat_id=chat_id, text=message)
-        except Exception as e:
-            logger.warning(f"Could not send announcement to group chat {chat_id}: {e}")
 
 # Command handlers
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
