@@ -153,6 +153,7 @@ async def setgroupchat(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     chat_id = update.effective_chat.id
     user_id = update.effective_user.id
+    current_chat_name = update.effective_chat.title or "this group"
 
     # Get user's reward group
     user_data = db.get_user(user_id)
@@ -166,12 +167,50 @@ async def setgroupchat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     group_id = user_data[3]
     group_data = db.get_group(group_id)
 
-    # Link the chat
+    # Check if there's already a linked chat
+    existing_chat_id = db.get_group_chat_id(group_id)
+
+    if existing_chat_id and existing_chat_id != chat_id:
+        # There's a different chat already linked - show warning
+        await update.message.reply_text(
+            f"⚠️ Warning!\n\n"
+            f"Reward group '{group_data[1]}' is already linked to another Telegram chat.\n\n"
+            f"If you link it to '{current_chat_name}', the previous chat will no longer receive announcements.\n\n"
+            f"To confirm linking to this chat, run the command again: /setgroupchat\n\n"
+            f"(This is a safety check to prevent accidental relinking)"
+        )
+        # Store confirmation state in context
+        context.user_data['confirm_setgroupchat'] = {
+            'group_id': group_id,
+            'chat_id': chat_id,
+            'chat_name': current_chat_name
+        }
+        return
+
+    # Check if user is confirming a relink
+    if 'confirm_setgroupchat' in context.user_data:
+        confirm_data = context.user_data['confirm_setgroupchat']
+        if confirm_data['group_id'] == group_id and confirm_data['chat_id'] == chat_id:
+            # User confirmed, proceed with relinking
+            db.set_group_chat(group_id, chat_id)
+            del context.user_data['confirm_setgroupchat']
+
+            await update.message.reply_text(
+                f"✅ Success! Chat relinked.\n\n"
+                f"'{current_chat_name}' is now linked to reward group '{group_data[1]}'.\n\n"
+                f"I'll post announcements here when:\n"
+                f"• Someone adds a new reward to their shop\n"
+                f"• Someone buys a reward\n"
+                f"• Someone reaches a streak milestone (7, 15, 30 days)"
+            )
+            return
+
+    # No existing link or same chat - proceed normally
     db.set_group_chat(group_id, chat_id)
 
     await update.message.reply_text(
-        f"Success!\n\n"
-        f"This Telegram group chat is now linked to reward group '{group_data[1]}'.\n\n"
+        f"✅ Success!\n\n"
+        f"'{current_chat_name}' is now linked to reward group '{group_data[1]}'.\n\n"
         f"I'll post announcements here when:\n"
         f"• Someone adds a new reward to their shop\n"
         f"• Someone buys a reward\n"
