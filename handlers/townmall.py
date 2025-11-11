@@ -59,7 +59,17 @@ async def town_mall(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard.append([InlineKeyboardButton("📜 My Purchases", callback_data="townmall_history")])
         keyboard.append([InlineKeyboardButton("Back to Menu", callback_data="back_to_menu")])
 
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+    # Handle both photo and text messages
+    try:
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+    except Exception:
+        # If edit fails (message is a photo), delete and send new text message
+        await query.message.delete()
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=text,
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
 
 
 async def view_town_mall_item(update: Update, context: ContextTypes.DEFAULT_TYPE):
