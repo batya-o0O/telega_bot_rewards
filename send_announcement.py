@@ -37,9 +37,9 @@ def get_all_group_chats():
     cursor = conn.cursor()
 
     cursor.execute('''
-        SELECT g.id, g.name, g.telegram_chat_id
+        SELECT g.id, g.name, g.group_chat_id
         FROM groups g
-        WHERE g.telegram_chat_id IS NOT NULL
+        WHERE g.group_chat_id IS NOT NULL
     ''')
 
     groups = cursor.fetchall()

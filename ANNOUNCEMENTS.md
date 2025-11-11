@@ -193,7 +193,7 @@ Proceed with sending? yes
 To see which groups have linked chats:
 
 ```bash
-sqlite3 bot.db "SELECT name, telegram_chat_id FROM groups WHERE telegram_chat_id IS NOT NULL;"
+sqlite3 bot.db "SELECT name, group_chat_id FROM groups WHERE group_chat_id IS NOT NULL;"
 ```
 
 ## Best Practices
@@ -211,9 +211,9 @@ If you need to send to specific groups only, modify the script or use:
 ```python
 # In send_announcement.py, modify get_all_group_chats():
 cursor.execute('''
-    SELECT g.id, g.name, g.telegram_chat_id
+    SELECT g.id, g.name, g.group_chat_id
     FROM groups g
-    WHERE g.telegram_chat_id IS NOT NULL
+    WHERE g.group_chat_id IS NOT NULL
     AND g.id IN (1, 2, 3)  -- Specific group IDs
 ''')
 ```
@@ -240,5 +240,5 @@ python send_announcement.py
 python -c "import os; from dotenv import load_dotenv; load_dotenv(); print('OK' if os.getenv('TELEGRAM_BOT_TOKEN') else 'Missing')"
 
 # Check linked groups
-sqlite3 bot.db "SELECT COUNT(*) FROM groups WHERE telegram_chat_id IS NOT NULL;"
+sqlite3 bot.db "SELECT COUNT(*) FROM groups WHERE group_chat_id IS NOT NULL;"
 ```
