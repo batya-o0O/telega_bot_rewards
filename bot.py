@@ -584,7 +584,8 @@ async def my_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not completions:
         text = f"Your Stats for {now.strftime('%B %Y')}:\n\n"
-        text += f"No habits completed this month yet.\n\nTotal Points: {user_data[4]}"
+        total_points = sum(user_data[5:10]) if len(user_data) > 9 else 0
+        text += f"No habits completed this month yet.\n\nTotal Points: {total_points}"
     else:
         text = f"Your Stats for {now.strftime('%B %Y')}:\n\n"
 
@@ -603,7 +604,8 @@ async def my_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
             for habit in habits_on_date:
                 text += f"  ✅ {habit}\n"
 
-        text += f"\nTotal Points: {user_data[4]}"
+        total_points = sum(user_data[5:10]) if len(user_data) > 9 else 0
+        text += f"\nTotal Points: {total_points}"
 
     keyboard = [
         [InlineKeyboardButton("📆 Overall Calendar", callback_data="calendar_view")]
@@ -694,7 +696,8 @@ async def calendar_view(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if calendar_line:
         text += calendar_line + "\n"
 
-    text += f"\nTotal Points: {user_data[4]}"
+    total_points = sum(user_data[5:10]) if len(user_data) > 9 else 0
+    text += f"\nTotal Points: {total_points}"
 
     keyboard = [
         [InlineKeyboardButton("📊 Stats View", callback_data="my_stats")],
@@ -815,10 +818,10 @@ async def group_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     for member in members:
         name = member[2] or member[1] or f"User {member[0]}"
-        # Calculate total points from typed points (columns 6-10)
-        total_points = sum(member[6:11]) if len(member) > 10 else member[4]
-        # Get coins (column 11)
-        coins = member[11] if len(member) > 11 else 0
+        # Calculate total points from typed points (columns 5-9)
+        total_points = sum(member[5:10]) if len(member) > 9 else 0
+        # Get coins (column 10)
+        coins = member[10] if len(member) > 10 else 0
         text += f"- {name}: {total_points} points | {coins} coins\n"
 
     keyboard = [
@@ -906,7 +909,7 @@ async def reward_shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard.append([InlineKeyboardButton("Back to Menu", callback_data="back_to_menu")])
 
     # Calculate total points from typed points
-    total_points = sum(user_data[6:11]) if len(user_data) > 10 else user_data[4]
+    total_points = sum(user_data[5:10]) if len(user_data) > 9 else 0
     await query.edit_message_text(
         f"Reward Shop\nYour points: {total_points}\n\nSelect a member to view their rewards:",
         reply_markup=InlineKeyboardMarkup(keyboard)
