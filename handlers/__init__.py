@@ -26,7 +26,9 @@ from .groups import (
 )
 from .habits import (
     my_habits,
+    yesterday_habits,
     toggle_habit,
+    toggle_yesterday_habit,
     manage_habits,
     add_habit_start,
     add_habit_get_name,
@@ -92,7 +94,9 @@ __all__ = [
     'view_user_stats',
     # Habits
     'my_habits',
+    'yesterday_habits',
     'toggle_habit',
+    'toggle_yesterday_habit',
     'manage_habits',
     'add_habit_start',
     'add_habit_get_name',

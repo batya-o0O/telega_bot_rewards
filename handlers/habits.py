@@ -74,10 +74,136 @@ async def my_habits(update: Update, context: ContextTypes.DEFAULT_TYPE):
         callback_data = f"toggle_habit_{habit_id}"
         keyboard.append([InlineKeyboardButton(f"{status} {type_emoji} {habit_name}", callback_data=callback_data)])
 
+    keyboard.append([InlineKeyboardButton("📅 Yesterday's Habits", callback_data="yesterday_habits")])
     keyboard.append([InlineKeyboardButton("Manage Habits", callback_data="manage_habits")])
     keyboard.append([InlineKeyboardButton("Back to Menu", callback_data="back_to_menu")])
 
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+
+
+async def yesterday_habits(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show user's habits for yesterday"""
+    query = update.callback_query
+    await query.answer()
+
+    user_id = update.effective_user.id
+    user_data = db.get_user(user_id)
+
+    if not user_data or not user_data[3]:
+        await query.edit_message_text("You need to join a group first!")
+        return
+
+    group_id = user_data[3]
+    habits = db.get_group_habits(group_id)
+
+    if not habits:
+        keyboard = [[InlineKeyboardButton("Back to Today", callback_data="my_habits")],
+                   [InlineKeyboardButton("Back to Menu", callback_data="back_to_menu")]]
+        await query.edit_message_text(
+            "No habits yet.",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        return
+
+    # Get yesterday's date
+    from datetime import timedelta
+    yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
+    yesterday_display = (datetime.now() - timedelta(days=1)).strftime('%B %d, %Y')
+    completed_habit_ids = db.get_completions_for_date(user_id, yesterday)
+
+    # Create keyboard with habits
+    keyboard = []
+    text = f"Yesterday's Habits ({yesterday_display}):\n\n"
+
+    for habit in habits:
+        habit_id = habit[0]
+        habit_name = habit[2]
+        habit_type = habit[5] if len(habit) > 5 else 'other'
+        is_completed = habit_id in completed_habit_ids
+
+        type_emoji = POINT_TYPES.get(habit_type, '⭐')
+        status = "✅" if is_completed else "⬜"
+        text += f"{status} {type_emoji} {habit_name}\n"
+
+        callback_data = f"toggle_yesterday_{habit_id}"
+        keyboard.append([InlineKeyboardButton(f"{status} {type_emoji} {habit_name}", callback_data=callback_data)])
+
+    keyboard.append([InlineKeyboardButton("« Back to Today", callback_data="my_habits")])
+    keyboard.append([InlineKeyboardButton("Back to Menu", callback_data="back_to_menu")])
+
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+
+
+async def toggle_yesterday_habit(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Toggle habit completion for yesterday"""
+    query = update.callback_query
+    await query.answer()
+
+    habit_id = int(query.data.split('_')[2])
+    user_id = update.effective_user.id
+
+    # Get yesterday's date
+    from datetime import timedelta
+    yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
+    yesterday_month = (datetime.now() - timedelta(days=1)).strftime('%Y-%m')
+
+    completed_habit_ids = db.get_completions_for_date(user_id, yesterday)
+
+    if habit_id in completed_habit_ids:
+        # Unmark completion
+        db.unmark_habit_complete(user_id, habit_id, yesterday)
+    else:
+        # Mark completion for yesterday
+        db.mark_habit_complete(user_id, habit_id, yesterday)
+
+        # Update streak with yesterday's date
+        streak_info = db.update_streak(user_id, habit_id, yesterday)
+
+        # Get user and group info for announcements
+        user_data = db.get_user(user_id)
+        group_id = user_data[3]
+        user_name = update.effective_user.first_name or update.effective_user.username or "Someone"
+
+        # Get habit info
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT name FROM habits WHERE id = ?', (habit_id,))
+        habit_name = cursor.fetchone()[0]
+        conn.close()
+
+        # Check for 30-day streak medal
+        if streak_info['current_streak'] == 30:
+            if not db.has_medal_for_habit(user_id, habit_id):
+                db.award_medal(user_id, habit_id)
+                medal_message = f"🏅 {user_name} earned a medal for '{habit_name}'! 30-day streak completed! (backdated)"
+                await send_group_announcement(context, group_id, medal_message)
+
+        # Check for medal milestones (3rd medal)
+        medal_count = db.get_medal_count(user_id)
+        if medal_count == 3:
+            milestone_message = f"🎖️ {user_name} earned their 3rd medal! Conversion rate bonus unlocked: 1.5:1"
+            await send_group_announcement(context, group_id, milestone_message)
+
+        # Check if habit is medaled - give coins instead of points
+        if db.has_medal_for_habit(user_id, habit_id):
+            # Give 0.5 coins for medaled habit
+            conn = db.get_connection()
+            cursor = conn.cursor()
+            cursor.execute('UPDATE users SET coins = coins + 0.5 WHERE telegram_id = ?', (user_id,))
+            conn.commit()
+            conn.close()
+
+            completion_message = f"💰 {user_name} completed '{habit_name}' (yesterday) - medaled habit! +0.5 coins"
+            await send_group_announcement(context, group_id, completion_message)
+
+        # Check for group habit completion
+        group_complete = db.check_and_award_group_habit_completion(group_id, habit_id, yesterday_month)
+        if group_complete:
+            group_message = f"🎉 Group Achievement! '{habit_name}' completed every day this month by the group! Everyone gets 10 coins!"
+            await send_group_announcement(context, group_id, group_message)
+
+    # Refresh the yesterday habits view
+    await yesterday_habits(update, context)
 
 
 async def toggle_habit(update: Update, context: ContextTypes.DEFAULT_TYPE):

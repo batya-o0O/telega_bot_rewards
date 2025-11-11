@@ -39,7 +39,7 @@ from handlers import (
     join_group_start, join_group_finish,
     group_info, setgroupchat, view_user_stats,
     # Habits
-    my_habits, toggle_habit, manage_habits,
+    my_habits, yesterday_habits, toggle_habit, toggle_yesterday_habit, manage_habits,
     add_habit_start, add_habit_get_name, add_habit_finish,
     edit_habit_list, edit_habit_start, edit_habit_get_name, edit_habit_finish,
     delete_habit_list, delete_habit_confirm,
@@ -161,7 +161,9 @@ def main():
 
     # Callback query handlers - Habits
     application.add_handler(CallbackQueryHandler(my_habits, pattern="^my_habits$"))
+    application.add_handler(CallbackQueryHandler(yesterday_habits, pattern="^yesterday_habits$"))
     application.add_handler(CallbackQueryHandler(toggle_habit, pattern=r"^toggle_habit_\d+$"))
+    application.add_handler(CallbackQueryHandler(toggle_yesterday_habit, pattern=r"^toggle_yesterday_\d+$"))
     application.add_handler(CallbackQueryHandler(manage_habits, pattern="^manage_habits$"))
     application.add_handler(CallbackQueryHandler(edit_habit_list, pattern="^edit_habit_list$"))
     application.add_handler(CallbackQueryHandler(delete_habit_list, pattern="^delete_habit_list$"))
