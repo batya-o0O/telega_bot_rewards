@@ -94,14 +94,25 @@ async def group_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     for member in members:
         name = member[2] or member[1] or f"User {member[0]}"
-        # Calculate total points from typed points (columns 5-9)
-        total_points = sum(member[5:10]) if len(member) > 9 else 0
+        # Get typed points (columns 5-9: physical, arts, food_related, educational, other)
+        points_physical = member[5] if len(member) > 5 else 0
+        points_arts = member[6] if len(member) > 6 else 0
+        points_food = member[7] if len(member) > 7 else 0
+        points_edu = member[8] if len(member) > 8 else 0
+        points_other = member[9] if len(member) > 9 else 0
+        total_points = points_physical + points_arts + points_food + points_edu + points_other
         # Get coins (column 10)
         coins = member[10] if len(member) > 10 else 0
-        text += f"- {name}: {total_points} points | {coins} coins\n"
+
+        text += f"\n👤 {name}:\n"
+        text += f"   Total: {total_points} pts | {coins} coins\n"
+        if total_points > 0:  # Show breakdown only if user has points
+            text += f"   💪 Physical: {points_physical} | 🎨 Arts: {points_arts}\n"
+            text += f"   🍽 Food: {points_food} | 📚 Educational: {points_edu}\n"
+            text += f"   ⭐ Other: {points_other}\n"
 
     keyboard = [
-        [InlineKeyboardButton("Monthly Report", callback_data="monthly_report")],
+        [InlineKeyboardButton("📊 Monthly Report", callback_data="monthly_report")],
         [InlineKeyboardButton("Back to Menu", callback_data="back_to_menu")]
     ]
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
