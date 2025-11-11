@@ -20,7 +20,8 @@ from .groups import (
     join_group_start,
     join_group_finish,
     group_info,
-    setgroupchat
+    setgroupchat,
+    view_user_stats
 )
 from .habits import (
     my_habits,
@@ -80,6 +81,7 @@ __all__ = [
     'join_group_finish',
     'group_info',
     'setgroupchat',
+    'view_user_stats',
     # Habits
     'my_habits',
     'toggle_habit',

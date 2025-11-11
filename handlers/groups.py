@@ -111,10 +111,31 @@ async def group_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text += f"   🍽 Food: {points_food} | 📚 Educational: {points_edu}\n"
             text += f"   ⭐ Other: {points_other}\n"
 
-    keyboard = [
-        [InlineKeyboardButton("📊 Monthly Report", callback_data="monthly_report")],
-        [InlineKeyboardButton("Back to Menu", callback_data="back_to_menu")]
-    ]
+    # Add buttons to view each member's stats
+    keyboard = []
+
+    # Add "View Stats" buttons for each member
+    stats_buttons = []
+    for member in members:
+        member_id = member[0]
+        name = member[2] or member[1] or f"User {member_id}"
+        # Limit button text to reasonable length
+        button_text = f"📊 {name[:15]}"
+        stats_buttons.append(InlineKeyboardButton(button_text, callback_data=f"view_user_stats_{member_id}"))
+
+        # Add 2 buttons per row for better layout
+        if len(stats_buttons) == 2:
+            keyboard.append(stats_buttons)
+            stats_buttons = []
+
+    # Add remaining buttons
+    if stats_buttons:
+        keyboard.append(stats_buttons)
+
+    # Add other navigation buttons
+    keyboard.append([InlineKeyboardButton("📊 Monthly Report", callback_data="monthly_report")])
+    keyboard.append([InlineKeyboardButton("Back to Menu", callback_data="back_to_menu")])
+
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
 
 
@@ -156,3 +177,60 @@ async def setgroupchat(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"• Someone buys a reward\n"
         f"• Someone reaches a streak milestone (7, 15, 30 days)"
     )
+
+
+async def view_user_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """View another user's statistics (similar to my_stats but for other users)"""
+    query = update.callback_query
+    await query.answer()
+
+    # Extract the target user ID from callback data
+    target_user_id = int(query.data.split('_')[-1])
+
+    # Get target user data
+    target_user_data = db.get_user(target_user_id)
+    if not target_user_data:
+        await query.edit_message_text("User not found!")
+        return
+
+    target_name = target_user_data[2] or target_user_data[1] or f"User {target_user_id}"
+
+    # Get habit completions for the target user (current month)
+    from datetime import datetime
+    now = datetime.now()
+    year = now.year
+    month = now.month
+
+    completions = db.get_user_completions_for_month(target_user_id, year, month)
+
+    if not completions:
+        text = f"📊 {target_name}'s Stats for {now.strftime('%B %Y')}:\n\n"
+        total_points = sum(target_user_data[5:10]) if len(target_user_data) > 9 else 0
+        text += f"No habits completed this month yet.\n\nTotal Points: {total_points}"
+    else:
+        text = f"📊 {target_name}'s Stats for {now.strftime('%B %Y')}:\n\n"
+
+        # Group by date
+        from collections import defaultdict
+        by_date = defaultdict(list)
+        for completion in completions:
+            date = completion[3]  # completion_date (YYYY-MM-DD format)
+            habit_name = completion[4]  # habit_name from join
+            by_date[date].append(habit_name)
+
+        for date in sorted(by_date.keys()):
+            day = datetime.strptime(date, '%Y-%m-%d').strftime('%d %b')
+            habits_on_date = by_date[date]
+            text += f"📅 {day}:\n"
+            for habit in habits_on_date:
+                text += f"  ✅ {habit}\n"
+
+        total_points = sum(target_user_data[5:10]) if len(target_user_data) > 9 else 0
+        text += f"\nTotal Points: {total_points}"
+
+    keyboard = [
+        [InlineKeyboardButton("« Back to Group Info", callback_data="group_info")],
+        [InlineKeyboardButton("Back to Menu", callback_data="back_to_menu")]
+    ]
+
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
