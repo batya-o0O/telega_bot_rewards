@@ -35,7 +35,7 @@ class Database:
             )
         ''')
 
-        # Users table - now with typed points
+        # Users table - now with typed points and coins
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS users (
                 telegram_id INTEGER PRIMARY KEY,
@@ -47,6 +47,7 @@ class Database:
                 points_food_related INTEGER DEFAULT 0,
                 points_educational INTEGER DEFAULT 0,
                 points_other INTEGER DEFAULT 0,
+                coins INTEGER DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (group_id) REFERENCES groups(id)
             )
@@ -140,6 +141,19 @@ class Database:
                 FOREIGN KEY (user_id) REFERENCES users(telegram_id),
                 FOREIGN KEY (habit_id) REFERENCES habits(id),
                 UNIQUE(user_id, habit_id)
+            )
+        ''')
+
+        # Monthly stats table (for tracking leaderboards)
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS monthly_stats (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                month TEXT NOT NULL,
+                points_earned INTEGER DEFAULT 0,
+                coins_earned INTEGER DEFAULT 0,
+                FOREIGN KEY (user_id) REFERENCES users(telegram_id),
+                UNIQUE(user_id, month)
             )
         ''')
 
@@ -376,6 +390,16 @@ class Database:
 
             # Award 1 point of the habit's type
             cursor.execute(f'UPDATE users SET {point_column} = {point_column} + 1 WHERE telegram_id = ?', (user_id,))
+
+            # Track monthly points earned
+            current_month = datetime.now().strftime('%Y-%m')
+            cursor.execute('''
+                INSERT INTO monthly_stats (user_id, month, points_earned)
+                VALUES (?, ?, 1)
+                ON CONFLICT(user_id, month) DO UPDATE SET
+                points_earned = points_earned + 1
+            ''', (user_id, current_month))
+
             conn.commit()
             conn.close()
             return True
@@ -528,10 +552,19 @@ class Database:
                 cursor.execute(f'UPDATE users SET points_{ptype} = points_{ptype} - ? WHERE telegram_id = ?',
                               (amount, buyer_id))
 
-            # Give points to seller (distributed proportionally)
-            for ptype, amount in deductions.items():
-                cursor.execute(f'UPDATE users SET points_{ptype} = points_{ptype} + ? WHERE telegram_id = ?',
-                              (amount, seller_id))
+            # Give COINS to seller (not points!)
+            cursor.execute('UPDATE users SET coins = coins + ? WHERE telegram_id = ?',
+                          (price, seller_id))
+
+            # Track monthly coins for seller
+            from datetime import datetime
+            current_month = datetime.now().strftime('%Y-%m')
+            cursor.execute('''
+                INSERT INTO monthly_stats (user_id, month, coins_earned)
+                VALUES (?, ?, ?)
+                ON CONFLICT(user_id, month) DO UPDATE SET
+                coins_earned = coins_earned + ?
+            ''', (seller_id, current_month, price, price))
 
             # Record transaction
             cursor.execute('''
@@ -551,9 +584,20 @@ class Database:
                 conn.close()
                 return False
 
-            # Process transaction
+            # Process transaction - buyer loses points, seller gets COINS
             cursor.execute(f'UPDATE users SET {point_column} = {point_column} - ? WHERE telegram_id = ?', (price, buyer_id))
-            cursor.execute(f'UPDATE users SET {point_column} = {point_column} + ? WHERE telegram_id = ?', (price, seller_id))
+            cursor.execute('UPDATE users SET coins = coins + ? WHERE telegram_id = ?', (price, seller_id))
+
+            # Track monthly coins for seller
+            from datetime import datetime
+            current_month = datetime.now().strftime('%Y-%m')
+            cursor.execute('''
+                INSERT INTO monthly_stats (user_id, month, coins_earned)
+                VALUES (?, ?, ?)
+                ON CONFLICT(user_id, month) DO UPDATE SET
+                coins_earned = coins_earned + ?
+            ''', (seller_id, current_month, price, price))
+
             cursor.execute('''
                 INSERT INTO transactions (buyer_id, seller_id, reward_id, points, point_type)
                 VALUES (?, ?, ?, ?, ?)
@@ -594,9 +638,20 @@ class Database:
             # Deduct from buyer
             cursor.execute(f'UPDATE users SET points_{ptype} = points_{ptype} - ? WHERE telegram_id = ?',
                           (amount, buyer_id))
-            # Add to seller
-            cursor.execute(f'UPDATE users SET points_{ptype} = points_{ptype} + ? WHERE telegram_id = ?',
-                          (amount, seller_id))
+
+        # Give COINS to seller (not points!)
+        cursor.execute('UPDATE users SET coins = coins + ? WHERE telegram_id = ?',
+                      (price, seller_id))
+
+        # Track monthly coins for seller
+        from datetime import datetime
+        current_month = datetime.now().strftime('%Y-%m')
+        cursor.execute('''
+            INSERT INTO monthly_stats (user_id, month, coins_earned)
+            VALUES (?, ?, ?)
+            ON CONFLICT(user_id, month) DO UPDATE SET
+            coins_earned = coins_earned + ?
+        ''', (seller_id, current_month, price, price))
 
         # Record transaction
         cursor.execute('''
@@ -794,3 +849,99 @@ class Database:
                 'last_completion_date': result[2]
             }
         return None
+
+    # Coins management
+    def add_coins(self, user_id: int, amount: int) -> bool:
+        """Add coins to a user"""
+        from datetime import datetime
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute('UPDATE users SET coins = coins + ? WHERE telegram_id = ?', (amount, user_id))
+
+        # Track monthly stats
+        current_month = datetime.now().strftime('%Y-%m')
+        cursor.execute('''
+            INSERT INTO monthly_stats (user_id, month, coins_earned)
+            VALUES (?, ?, ?)
+            ON CONFLICT(user_id, month) DO UPDATE SET
+            coins_earned = coins_earned + ?
+        ''', (user_id, current_month, amount, amount))
+
+        conn.commit()
+        conn.close()
+        return True
+
+    def get_user_coins(self, user_id: int) -> int:
+        """Get user's coin balance"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT coins FROM users WHERE telegram_id = ?', (user_id,))
+        result = cursor.fetchone()
+        conn.close()
+        return result[0] if result else 0
+
+    def track_points_earned(self, user_id: int, amount: int):
+        """Track points earned this month"""
+        from datetime import datetime
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        current_month = datetime.now().strftime('%Y-%m')
+        cursor.execute('''
+            INSERT INTO monthly_stats (user_id, month, points_earned)
+            VALUES (?, ?, ?)
+            ON CONFLICT(user_id, month) DO UPDATE SET
+            points_earned = points_earned + ?
+        ''', (user_id, current_month, amount, amount))
+
+        conn.commit()
+        conn.close()
+
+    def get_monthly_leaderboard(self, group_id: int, month: str = None) -> Dict:
+        """Get leaderboards for best shopkeeper (coins) and dungeon master (points)"""
+        from datetime import datetime
+        if not month:
+            month = datetime.now().strftime('%Y-%m')
+
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        # Get users in this group
+        cursor.execute('SELECT telegram_id FROM users WHERE group_id = ?', (group_id,))
+        user_ids = [row[0] for row in cursor.fetchall()]
+
+        if not user_ids:
+            conn.close()
+            return {'shopkeepers': [], 'dungeon_masters': []}
+
+        # Get top shopkeepers (most coins earned)
+        placeholders = ','.join('?' * len(user_ids))
+        cursor.execute(f'''
+            SELECT u.telegram_id, u.first_name, u.username, m.coins_earned
+            FROM monthly_stats m
+            JOIN users u ON m.user_id = u.telegram_id
+            WHERE m.user_id IN ({placeholders}) AND m.month = ?
+            ORDER BY m.coins_earned DESC
+            LIMIT 3
+        ''', user_ids + [month])
+        shopkeepers = cursor.fetchall()
+
+        # Get top dungeon masters (most points earned)
+        cursor.execute(f'''
+            SELECT u.telegram_id, u.first_name, u.username, m.points_earned
+            FROM monthly_stats m
+            JOIN users u ON m.user_id = u.telegram_id
+            WHERE m.user_id IN ({placeholders}) AND m.month = ?
+            ORDER BY m.points_earned DESC
+            LIMIT 3
+        ''', user_ids + [month])
+        dungeon_masters = cursor.fetchall()
+
+        conn.close()
+
+        return {
+            'shopkeepers': shopkeepers,
+            'dungeon_masters': dungeon_masters,
+            'month': month
+        }

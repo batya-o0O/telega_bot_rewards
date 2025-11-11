@@ -188,6 +188,49 @@ async def setgroupchat(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"• Someone reaches a streak milestone (7, 15, 30 days)"
     )
 
+async def monthlyreport(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /monthlyreport command - show monthly leaderboards"""
+    user_id = update.effective_user.id
+    user_data = db.get_user(user_id)
+
+    if not user_data or not user_data[3]:
+        await update.message.reply_text("You need to join a group first! Use /start to set up your account.")
+        return
+
+    group_id = user_data[3]
+    from datetime import datetime
+    month_name = datetime.now().strftime('%B %Y')
+
+    leaderboard = db.get_monthly_leaderboard(group_id)
+
+    text = f"📊 Monthly Report - {month_name}\n\n"
+
+    # Best Shopkeepers (most coins earned)
+    text += "🏆 Best Shopkeepers (Coins Earned):\n"
+    if leaderboard['shopkeepers']:
+        medals = ['🥇', '🥈', '🥉']
+        for i, (user_id, first_name, username, coins) in enumerate(leaderboard['shopkeepers']):
+            medal = medals[i] if i < len(medals) else '  '
+            name = first_name or username or f"User {user_id}"
+            text += f"{medal} {name}: {coins} coins\n"
+    else:
+        text += "No sales yet this month!\n"
+
+    text += "\n"
+
+    # Best Dungeon Masters (most points earned)
+    text += "⚔️ Dungeon Masters (Points Earned):\n"
+    if leaderboard['dungeon_masters']:
+        medals = ['🥇', '🥈', '🥉']
+        for i, (user_id, first_name, username, points) in enumerate(leaderboard['dungeon_masters']):
+            medal = medals[i] if i < len(medals) else '  '
+            name = first_name or username or f"User {user_id}"
+            text += f"{medal} {name}: {points} points\n"
+    else:
+        text += "No habits completed yet this month!\n"
+
+    await update.message.reply_text(text, reply_markup=get_main_menu_keyboard())
+
 # Group management
 async def create_group_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Start group creation"""
@@ -774,9 +817,65 @@ async def group_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
         name = member[2] or member[1] or f"User {member[0]}"
         # Calculate total points from typed points (columns 6-10)
         total_points = sum(member[6:11]) if len(member) > 10 else member[4]
-        text += f"- {name}: {total_points} points\n"
+        # Get coins (column 11)
+        coins = member[11] if len(member) > 11 else 0
+        text += f"- {name}: {total_points} points | {coins} coins\n"
 
-    keyboard = [[InlineKeyboardButton("Back to Menu", callback_data="back_to_menu")]]
+    keyboard = [
+        [InlineKeyboardButton("📊 Monthly Report", callback_data="monthly_report")],
+        [InlineKeyboardButton("Back to Menu", callback_data="back_to_menu")]
+    ]
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+
+async def monthly_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show monthly leaderboards for best shopkeeper and dungeon master"""
+    query = update.callback_query
+    await query.answer()
+
+    user_id = update.effective_user.id
+    user_data = db.get_user(user_id)
+
+    if not user_data or not user_data[3]:
+        await query.edit_message_text("You need to join a group first!")
+        return
+
+    group_id = user_data[3]
+    from datetime import datetime
+    current_month = datetime.now().strftime('%Y-%m')
+    month_name = datetime.now().strftime('%B %Y')
+
+    leaderboard = db.get_monthly_leaderboard(group_id)
+
+    text = f"📊 Monthly Report - {month_name}\n\n"
+
+    # Best Shopkeepers (most coins earned)
+    text += "🏆 Best Shopkeepers (Coins Earned):\n"
+    if leaderboard['shopkeepers']:
+        medals = ['🥇', '🥈', '🥉']
+        for i, (user_id, first_name, username, coins) in enumerate(leaderboard['shopkeepers']):
+            medal = medals[i] if i < len(medals) else '  '
+            name = first_name or username or f"User {user_id}"
+            text += f"{medal} {name}: {coins} coins\n"
+    else:
+        text += "No sales yet this month!\n"
+
+    text += "\n"
+
+    # Best Dungeon Masters (most points earned)
+    text += "⚔️ Dungeon Masters (Points Earned):\n"
+    if leaderboard['dungeon_masters']:
+        medals = ['🥇', '🥈', '🥉']
+        for i, (user_id, first_name, username, points) in enumerate(leaderboard['dungeon_masters']):
+            medal = medals[i] if i < len(medals) else '  '
+            name = first_name or username or f"User {user_id}"
+            text += f"{medal} {name}: {points} points\n"
+    else:
+        text += "No habits completed yet this month!\n"
+
+    keyboard = [
+        [InlineKeyboardButton("« Back to Group Info", callback_data="group_info")],
+        [InlineKeyboardButton("Back to Menu", callback_data="back_to_menu")]
+    ]
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
 
 # Reward shop
@@ -1523,6 +1622,7 @@ def main():
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("menu", menu))
     application.add_handler(CommandHandler("setgroupchat", setgroupchat))
+    application.add_handler(CommandHandler("monthlyreport", monthlyreport))
 
     # Group creation conversation
     create_group_conv = ConversationHandler(
@@ -1607,6 +1707,7 @@ def main():
     application.add_handler(CallbackQueryHandler(calendar_view, pattern="^calendar_view$"))
     application.add_handler(CallbackQueryHandler(habit_calendar_view, pattern=r"^habit_calendar_\d+$"))
     application.add_handler(CallbackQueryHandler(group_info, pattern="^group_info$"))
+    application.add_handler(CallbackQueryHandler(monthly_report, pattern="^monthly_report$"))
 
     application.add_handler(CallbackQueryHandler(reward_shop, pattern="^reward_shop$"))
     application.add_handler(CallbackQueryHandler(view_shop, pattern=r"^view_shop_\d+$"))
