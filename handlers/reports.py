@@ -11,7 +11,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
 from database import Database
-from utils import get_main_menu_keyboard
+from utils import get_main_menu_keyboard, format_user_name_with_medals
 
 # Initialize database
 db = Database()
@@ -43,7 +43,8 @@ async def monthly_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for i, (user_id, first_name, username, coins) in enumerate(leaderboard['shopkeepers']):
             medal = medals[i] if i < len(medals) else '  '
             name = first_name or username or f"User {user_id}"
-            text += f"{medal} {name}: {coins} coins\n"
+            name_with_medals = format_user_name_with_medals(user_id, name)
+            text += f"{medal} {name_with_medals}: {coins} coins\n"
     else:
         text += "No sales yet this month!\n"
 
@@ -56,7 +57,8 @@ async def monthly_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for i, (user_id, first_name, username, points) in enumerate(leaderboard['dungeon_masters']):
             medal = medals[i] if i < len(medals) else '  '
             name = first_name or username or f"User {user_id}"
-            text += f"{medal} {name}: {points} points\n"
+            name_with_medals = format_user_name_with_medals(user_id, name)
+            text += f"{medal} {name_with_medals}: {points} points\n"
     else:
         text += "No habits completed yet this month!\n"
 
@@ -90,7 +92,8 @@ async def monthlyreport(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for i, (user_id, first_name, username, coins) in enumerate(leaderboard['shopkeepers']):
             medal = medals[i] if i < len(medals) else '  '
             name = first_name or username or f"User {user_id}"
-            text += f"{medal} {name}: {coins} coins\n"
+            name_with_medals = format_user_name_with_medals(user_id, name)
+            text += f"{medal} {name_with_medals}: {coins} coins\n"
     else:
         text += "No sales yet this month!\n"
 
@@ -103,7 +106,8 @@ async def monthlyreport(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for i, (user_id, first_name, username, points) in enumerate(leaderboard['dungeon_masters']):
             medal = medals[i] if i < len(medals) else '  '
             name = first_name or username or f"User {user_id}"
-            text += f"{medal} {name}: {points} points\n"
+            name_with_medals = format_user_name_with_medals(user_id, name)
+            text += f"{medal} {name_with_medals}: {points} points\n"
     else:
         text += "No habits completed yet this month!\n"
 

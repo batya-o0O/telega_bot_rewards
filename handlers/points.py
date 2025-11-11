@@ -128,10 +128,14 @@ async def convert_points_finish(update: Update, context: ContextTypes.DEFAULT_TY
                                           reply_markup=get_main_menu_keyboard())
             return ConversationHandler.END
 
+        # Get user's conversion rate based on medals
+        conversion_rate = db.get_conversion_rate(user_id)
+        medal_count = db.get_medal_count(user_id)
+
         success = db.convert_points(user_id, from_type, to_type, amount)
 
         if success:
-            converted = amount // 2
+            converted = int(amount / conversion_rate)
             from_emoji = POINT_TYPES.get(from_type, '⭐')
             from_name = from_type.replace('_', ' ').title()
             to_emoji = POINT_TYPES.get(to_type, '⭐')
@@ -140,8 +144,10 @@ async def convert_points_finish(update: Update, context: ContextTypes.DEFAULT_TY
             user_points = db.get_user_points(user_id)
             text = f"✅ Conversion successful!\n\n"
             text += f"Converted: {amount} {from_emoji} {from_name}\n"
-            text += f"Received: {converted} {to_emoji} {to_name}\n\n"
-            text += "Your Points:\n" + format_points_display(user_points)
+            text += f"Received: {converted} {to_emoji} {to_name}\n"
+            if medal_count >= 3:
+                text += f"\n🏅 Medal bonus active! Rate: {conversion_rate}:1\n"
+            text += "\nYour Points:\n" + format_points_display(user_points)
 
             await update.message.reply_text(text, reply_markup=get_main_menu_keyboard())
         else:

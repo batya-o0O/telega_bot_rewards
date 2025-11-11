@@ -11,7 +11,7 @@ from telegram.ext import ContextTypes, ConversationHandler
 from database import Database
 from constants import CREATING_GROUP, JOINING_GROUP
 from utils.keyboards import get_main_menu_keyboard
-from utils.formatters import format_points_display
+from utils.formatters import format_points_display, format_user_name_with_medals
 
 # Initialize database
 db = Database()
@@ -93,7 +93,10 @@ async def group_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text += "Members:\n"
 
     for member in members:
-        name = member[2] or member[1] or f"User {member[0]}"
+        member_id = member[0]
+        name = member[2] or member[1] or f"User {member_id}"
+        # Add medal emojis to name
+        name_with_medals = format_user_name_with_medals(member_id, name)
         # Get typed points (columns 5-9: physical, arts, food_related, educational, other)
         points_physical = member[5] if len(member) > 5 else 0
         points_arts = member[6] if len(member) > 6 else 0
@@ -104,7 +107,7 @@ async def group_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Get coins (column 10)
         coins = member[10] if len(member) > 10 else 0
 
-        text += f"\n👤 {name}:\n"
+        text += f"\n👤 {name_with_medals}:\n"
         text += f"   Total: {total_points} pts | {coins} coins\n"
         if total_points > 0:  # Show breakdown only if user has points
             text += f"   💪 Physical: {points_physical} | 🎨 Arts: {points_arts}\n"
@@ -233,6 +236,8 @@ async def view_user_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     target_name = target_user_data[2] or target_user_data[1] or f"User {target_user_id}"
+    # Add medal emojis to name
+    target_name_with_medals = format_user_name_with_medals(target_user_id, target_name)
 
     # Get habit completions for the target user (current month)
     from datetime import datetime
@@ -243,11 +248,11 @@ async def view_user_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     completions = db.get_user_completions_for_month(target_user_id, year, month)
 
     if not completions:
-        text = f"📊 {target_name}'s Stats for {now.strftime('%B %Y')}:\n\n"
+        text = f"📊 {target_name_with_medals}'s Stats for {now.strftime('%B %Y')}:\n\n"
         total_points = sum(target_user_data[5:10]) if len(target_user_data) > 9 else 0
         text += f"No habits completed this month yet.\n\nTotal Points: {total_points}"
     else:
-        text = f"📊 {target_name}'s Stats for {now.strftime('%B %Y')}:\n\n"
+        text = f"📊 {target_name_with_medals}'s Stats for {now.strftime('%B %Y')}:\n\n"
 
         # Group by date
         from collections import defaultdict

@@ -7,7 +7,7 @@ from .keyboards import (
     get_habit_type_keyboard,
     get_reward_point_type_keyboard
 )
-from .formatters import format_points_display
+from .formatters import format_points_display, format_user_name_with_medals
 from .announcements import send_group_announcement
 
 __all__ = [
@@ -15,5 +15,6 @@ __all__ = [
     'get_habit_type_keyboard',
     'get_reward_point_type_keyboard',
     'format_points_display',
+    'format_user_name_with_medals',
     'send_group_announcement',
 ]

@@ -2,7 +2,9 @@
 Text formatting utilities
 """
 
-from database import POINT_TYPES
+from database import POINT_TYPES, Database
+
+db = Database()
 
 
 def format_points_display(points_dict):
@@ -17,3 +19,13 @@ def format_points_display(points_dict):
     if not lines:
         return "No points yet"
     return "\n".join(lines)
+
+
+def format_user_name_with_medals(user_id: int, user_name: str) -> str:
+    """Format user name with medal emojis based on medal count"""
+    medal_count = db.get_medal_count(user_id)
+    if medal_count == 0:
+        return user_name
+
+    medal_emoji = "🏅" * medal_count
+    return f"{user_name} {medal_emoji}"

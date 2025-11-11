@@ -88,6 +88,7 @@ async def toggle_habit(update: Update, context: ContextTypes.DEFAULT_TYPE):
     habit_id = int(query.data.split('_')[2])
     user_id = update.effective_user.id
     today = datetime.now().strftime('%Y-%m-%d')
+    current_month = datetime.now().strftime('%Y-%m')
 
     completed_habit_ids = db.get_completions_for_date(user_id, today)
 
@@ -99,19 +100,46 @@ async def toggle_habit(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Update streak and check for milestones
         streak_info = db.update_streak(user_id, habit_id, today)
 
+        # Get user and group info
+        user_data = db.get_user(user_id)
+        group_id = user_data[3]
+        user_name = update.effective_user.first_name or update.effective_user.username or "Someone"
+
+        # Get habit info
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT name FROM habits WHERE id = ?', (habit_id,))
+        habit_name = cursor.fetchone()[0]
+        conn.close()
+
+        # Check if user reached 30-day streak and award medal
+        if streak_info['current_streak'] == 30:
+            # Check if user doesn't have medal for this habit yet
+            if not db.has_medal_for_habit(user_id, habit_id):
+                # Award medal
+                db.award_medal(user_id, habit_id)
+
+                # Send medal announcement
+                medal_message = f"🏅 {user_name} earned a medal for '{habit_name}'! 30-day streak completed!"
+                await send_group_announcement(context, group_id, medal_message)
+
+        # Check if this is the user's 3rd medal total
+        medal_count = db.get_medal_count(user_id)
+        if medal_count == 3:
+            # Send conversion rate improvement announcement
+            conversion_message = f"⭐ {user_name} earned 3 medals! Conversion rate improved to 1.5:1!"
+            await send_group_announcement(context, group_id, conversion_message)
+
+        # Award coins based on medal status for THIS habit
+        if db.has_medal_for_habit(user_id, habit_id):
+            # User has medal for this habit, give 0.5 coins
+            db.add_coins(user_id, 0.5)
+        else:
+            # No medal for this habit, give 1 point (already done by mark_habit_complete)
+            pass
+
         # If milestone reached, announce it
         if streak_info['new_milestone']:
-            user_data = db.get_user(user_id)
-            group_id = user_data[3]
-
-            # Get habit info
-            conn = db.get_connection()
-            cursor = conn.cursor()
-            cursor.execute('SELECT name FROM habits WHERE id = ?', (habit_id,))
-            habit_name = cursor.fetchone()[0]
-            conn.close()
-
-            user_name = update.effective_user.first_name or update.effective_user.username or "Someone"
             milestone = streak_info['new_milestone']
 
             message = f"🎉 Congratulations {user_name}!\n\n"
@@ -119,6 +147,12 @@ async def toggle_habit(update: Update, context: ContextTypes.DEFAULT_TYPE):
             message += f"Keep up the amazing work!"
 
             await send_group_announcement(context, group_id, message)
+
+        # Check for group habit completion
+        if db.check_and_award_group_habit_completion(group_id, habit_id, current_month):
+            # Send group achievement announcement
+            group_message = f"🎉 Group Achievement! '{habit_name}' completed every day this month! Everyone gets 10 coins!"
+            await send_group_announcement(context, group_id, group_message)
 
     # Refresh the habits view
     await my_habits(update, context)

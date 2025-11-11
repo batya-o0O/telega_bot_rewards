@@ -945,3 +945,129 @@ class Database:
             'dungeon_masters': dungeon_masters,
             'month': month
         }
+
+    # Medal methods
+    def award_medal(self, user_id: int, habit_id: int) -> bool:
+        """Award a medal to a user for completing a habit 30 days in a row"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute('''
+                INSERT INTO medals (user_id, habit_id)
+                VALUES (?, ?)
+            ''', (user_id, habit_id))
+            conn.commit()
+            return True
+        except sqlite3.IntegrityError:
+            # Medal already exists
+            return False
+        finally:
+            conn.close()
+
+    def get_user_medals(self, user_id: int) -> List[Tuple]:
+        """Get all medals for a user"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT m.id, m.habit_id, h.name, m.awarded_at
+            FROM medals m
+            JOIN habits h ON m.habit_id = h.id
+            WHERE m.user_id = ?
+        ''', (user_id,))
+        medals = cursor.fetchall()
+        conn.close()
+        return medals
+
+    def get_medal_count(self, user_id: int) -> int:
+        """Get total number of medals for a user"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT COUNT(*) FROM medals WHERE user_id = ?', (user_id,))
+        count = cursor.fetchone()[0]
+        conn.close()
+        return count
+
+    def has_medal_for_habit(self, user_id: int, habit_id: int) -> bool:
+        """Check if user has a medal for a specific habit"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT COUNT(*) FROM medals
+            WHERE user_id = ? AND habit_id = ?
+        ''', (user_id, habit_id))
+        has_medal = cursor.fetchone()[0] > 0
+        conn.close()
+        return has_medal
+
+    def get_conversion_rate(self, user_id: int) -> float:
+        """Get conversion rate for user based on medal count (2:1 default, 1.5:1 with 3+ medals)"""
+        medal_count = self.get_medal_count(user_id)
+        return 1.5 if medal_count >= 3 else 2.0
+
+    def check_and_award_group_habit_completion(self, group_id: int, habit_id: int, month: str) -> bool:
+        """
+        Check if a habit was completed every day of the month by at least one group member.
+        If yes, award 10 coins to all members and record the completion.
+        Returns True if this is a new completion (announcement needed).
+        """
+        from datetime import datetime
+        import calendar
+
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            # Check if already awarded for this month
+            cursor.execute('''
+                SELECT COUNT(*) FROM group_habit_completions
+                WHERE group_id = ? AND habit_id = ? AND month = ?
+            ''', (group_id, habit_id, month))
+
+            if cursor.fetchone()[0] > 0:
+                conn.close()
+                return False  # Already awarded
+
+            # Parse month (format: YYYY-MM)
+            year, month_num = map(int, month.split('-'))
+            days_in_month = calendar.monthrange(year, month_num)[1]
+
+            # Check if habit was completed on every day of the month
+            cursor.execute('''
+                SELECT DISTINCT DATE(completion_date) as day
+                FROM habit_completions
+                WHERE habit_id = ?
+                AND user_id IN (SELECT telegram_id FROM users WHERE group_id = ?)
+                AND strftime('%Y-%m', completion_date) = ?
+                ORDER BY day
+            ''', (habit_id, group_id, month))
+
+            completed_days = {row[0] for row in cursor.fetchall()}
+
+            # Check if all days are covered
+            expected_days = {f"{year:04d}-{month_num:02d}-{day:02d}" for day in range(1, days_in_month + 1)}
+
+            if completed_days >= expected_days:
+                # Award coins to all group members
+                cursor.execute('''
+                    UPDATE users
+                    SET coins = coins + 10
+                    WHERE group_id = ?
+                ''', (group_id,))
+
+                # Record completion
+                cursor.execute('''
+                    INSERT INTO group_habit_completions (group_id, habit_id, month)
+                    VALUES (?, ?, ?)
+                ''', (group_id, habit_id, month))
+
+                conn.commit()
+                conn.close()
+                return True  # New completion, announce it
+
+            conn.close()
+            return False
+
+        except Exception as e:
+            conn.rollback()
+            conn.close()
+            raise e
