@@ -13,6 +13,7 @@ def get_main_menu_keyboard():
         [InlineKeyboardButton("My Stats", callback_data="my_stats")],
         [InlineKeyboardButton("Reward Shop", callback_data="reward_shop")],
         [InlineKeyboardButton("My Rewards Shop", callback_data="my_rewards")],
+        [InlineKeyboardButton("🏪 Town Mall", callback_data="town_mall")],
         [InlineKeyboardButton("Convert Points", callback_data="convert_points")],
         [InlineKeyboardButton("Group Info", callback_data="group_info")],
     ]

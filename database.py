@@ -1071,3 +1071,130 @@ class Database:
             conn.rollback()
             conn.close()
             raise e
+
+    # ==================== Town Mall Methods ====================
+
+    def get_town_mall_items(self, available_only: bool = True):
+        """Get all town mall items"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        if available_only:
+            cursor.execute('''
+                SELECT id, name, description, price_coins, image_filename, stock, available
+                FROM town_mall_items
+                WHERE available = 1
+                ORDER BY price_coins ASC
+            ''')
+        else:
+            cursor.execute('''
+                SELECT id, name, description, price_coins, image_filename, stock, available
+                FROM town_mall_items
+                ORDER BY price_coins ASC
+            ''')
+
+        items = cursor.fetchall()
+        conn.close()
+        return items
+
+    def get_town_mall_item(self, item_id: int):
+        """Get specific town mall item by ID"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT id, name, description, price_coins, image_filename, stock, available
+            FROM town_mall_items
+            WHERE id = ?
+        ''', (item_id,))
+        item = cursor.fetchone()
+        conn.close()
+        return item
+
+    def purchase_town_mall_item(self, user_id: int, item_id: int) -> tuple[bool, str]:
+        """
+        Purchase item from town mall.
+        Returns (success, message)
+        """
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            # Get item details
+            cursor.execute('''
+                SELECT name, price_coins, stock, available
+                FROM town_mall_items
+                WHERE id = ?
+            ''', (item_id,))
+
+            item = cursor.fetchone()
+            if not item:
+                conn.close()
+                return False, "Item not found"
+
+            item_name, price, stock, available = item
+
+            if not available:
+                conn.close()
+                return False, "Item is not available"
+
+            # Check stock (stock = -1 means unlimited)
+            if stock == 0:
+                conn.close()
+                return False, "Item is out of stock"
+
+            # Get user's coins
+            cursor.execute('SELECT coins FROM users WHERE telegram_id = ?', (user_id,))
+            user = cursor.fetchone()
+            if not user:
+                conn.close()
+                return False, "User not found"
+
+            user_coins = user[0]
+
+            if user_coins < price:
+                conn.close()
+                return False, f"Not enough coins. You have {user_coins}, need {price}"
+
+            # Deduct coins
+            cursor.execute('''
+                UPDATE users
+                SET coins = coins - ?
+                WHERE telegram_id = ?
+            ''', (price, user_id))
+
+            # Decrease stock (if not unlimited)
+            if stock > 0:
+                cursor.execute('''
+                    UPDATE town_mall_items
+                    SET stock = stock - 1
+                    WHERE id = ?
+                ''', (item_id,))
+
+            # Record purchase
+            cursor.execute('''
+                INSERT INTO town_mall_purchases (user_id, item_id, item_name, price_paid)
+                VALUES (?, ?, ?, ?)
+            ''', (user_id, item_id, item_name, price))
+
+            conn.commit()
+            conn.close()
+            return True, f"Successfully purchased {item_name}!"
+
+        except Exception as e:
+            conn.rollback()
+            conn.close()
+            return False, f"Purchase failed: {str(e)}"
+
+    def get_user_town_mall_purchases(self, user_id: int):
+        """Get user's town mall purchase history"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT item_name, price_paid, purchased_at
+            FROM town_mall_purchases
+            WHERE user_id = ?
+            ORDER BY purchased_at DESC
+        ''', (user_id,))
+        purchases = cursor.fetchall()
+        conn.close()
+        return purchases

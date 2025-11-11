@@ -54,7 +54,10 @@ from handlers import (
     convert_points_start, convert_points_select_to,
     convert_points_select_amount, convert_points_finish,
     # Reports
-    monthly_report, monthlyreport
+    monthly_report, monthlyreport,
+    # Town Mall
+    town_mall, view_town_mall_item, buy_town_mall_item,
+    town_mall_purchase_history, town_mall_dummy_callback
 )
 
 # Load environment variables
@@ -190,6 +193,13 @@ def main():
     application.add_handler(CallbackQueryHandler(my_rewards, pattern="^my_rewards$"))
     application.add_handler(CallbackQueryHandler(delete_reward_list, pattern="^delete_reward_list$"))
     application.add_handler(CallbackQueryHandler(delete_reward_confirm, pattern=r"^confirm_delete_reward_\d+$"))
+
+    # Town Mall
+    application.add_handler(CallbackQueryHandler(town_mall, pattern="^town_mall$"))
+    application.add_handler(CallbackQueryHandler(view_town_mall_item, pattern=r"^townmall_view_\d+$"))
+    application.add_handler(CallbackQueryHandler(buy_town_mall_item, pattern=r"^townmall_buy_\d+$"))
+    application.add_handler(CallbackQueryHandler(town_mall_purchase_history, pattern="^townmall_history$"))
+    application.add_handler(CallbackQueryHandler(town_mall_dummy_callback, pattern="^townmall_(unavailable|outofstock|notenough)$"))
 
     # Common handlers
     application.add_handler(CallbackQueryHandler(back_to_menu, pattern="^back_to_menu$"))

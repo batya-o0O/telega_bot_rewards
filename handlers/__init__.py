@@ -9,6 +9,7 @@ This package contains all the command and callback handlers organized by feature
 - rewards: Reward shop (browse, buy, sell, custom payment)
 - points: Point conversion
 - reports: Monthly reports and leaderboards
+- townmall: Town mall shop with coins
 """
 
 # Import all handlers for easy access
@@ -66,6 +67,13 @@ from .reports import (
     monthly_report,
     monthlyreport
 )
+from .townmall import (
+    town_mall,
+    view_town_mall_item,
+    buy_town_mall_item,
+    town_mall_purchase_history,
+    town_mall_dummy_callback
+)
 
 __all__ = [
     # Common
@@ -121,4 +129,10 @@ __all__ = [
     # Reports
     'monthly_report',
     'monthlyreport',
+    # Town Mall
+    'town_mall',
+    'view_town_mall_item',
+    'buy_town_mall_item',
+    'town_mall_purchase_history',
+    'town_mall_dummy_callback',
 ]
