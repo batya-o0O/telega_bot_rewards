@@ -173,7 +173,10 @@ async def setgroupchat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Check if there's already a linked chat
     existing_chat_id = db.get_group_chat_id(group_id)
 
-    if existing_chat_id and existing_chat_id != chat_id:
+    # Check if there's a pending confirmation
+    pending_confirmation = db.get_setgroupchat_confirmation(user_id, group_id)
+
+    if existing_chat_id and existing_chat_id != chat_id and not pending_confirmation:
         # There's a different chat already linked - show warning
         await update.message.reply_text(
             f"⚠️ Warning!\n\n"
@@ -182,31 +185,25 @@ async def setgroupchat(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"To confirm linking to this chat, run the command again: /setgroupchat\n\n"
             f"(This is a safety check to prevent accidental relinking)"
         )
-        # Store confirmation state in context
-        context.user_data['confirm_setgroupchat'] = {
-            'group_id': group_id,
-            'chat_id': chat_id,
-            'chat_name': current_chat_name
-        }
+        # Store confirmation state in database
+        db.set_setgroupchat_confirmation(user_id, group_id, chat_id)
         return
 
     # Check if user is confirming a relink
-    if 'confirm_setgroupchat' in context.user_data:
-        confirm_data = context.user_data['confirm_setgroupchat']
-        if confirm_data['group_id'] == group_id and confirm_data['chat_id'] == chat_id:
-            # User confirmed, proceed with relinking
-            db.set_group_chat(group_id, chat_id)
-            del context.user_data['confirm_setgroupchat']
+    if pending_confirmation and pending_confirmation == chat_id:
+        # User confirmed, proceed with relinking
+        db.set_group_chat(group_id, chat_id)
+        db.clear_setgroupchat_confirmation(user_id, group_id)
 
-            await update.message.reply_text(
-                f"✅ Success! Chat relinked.\n\n"
-                f"'{current_chat_name}' is now linked to reward group '{group_data[1]}'.\n\n"
-                f"I'll post announcements here when:\n"
-                f"• Someone adds a new reward to their shop\n"
-                f"• Someone buys a reward\n"
-                f"• Someone reaches a streak milestone (7, 15, 30 days)"
-            )
-            return
+        await update.message.reply_text(
+            f"✅ Success! Chat relinked.\n\n"
+            f"'{current_chat_name}' is now linked to reward group '{group_data[1]}'.\n\n"
+            f"I'll post announcements here when:\n"
+            f"• Someone adds a new reward to their shop\n"
+            f"• Someone buys a reward\n"
+            f"• Someone reaches a streak milestone (7, 15, 30 days)"
+        )
+        return
 
     # No existing link or same chat - proceed normally
     db.set_group_chat(group_id, chat_id)

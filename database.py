@@ -749,6 +749,40 @@ class Database:
         conn.close()
         return result[0] if result and result[0] else None
 
+    def set_setgroupchat_confirmation(self, user_id: int, group_id: int, new_chat_id: int):
+        """Store a pending setgroupchat confirmation"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT OR REPLACE INTO setgroupchat_confirmations (user_id, group_id, new_chat_id)
+            VALUES (?, ?, ?)
+        ''', (user_id, group_id, new_chat_id))
+        conn.commit()
+        conn.close()
+
+    def get_setgroupchat_confirmation(self, user_id: int, group_id: int) -> Optional[int]:
+        """Get pending confirmation for setgroupchat"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT new_chat_id FROM setgroupchat_confirmations
+            WHERE user_id = ? AND group_id = ?
+        ''', (user_id, group_id))
+        result = cursor.fetchone()
+        conn.close()
+        return result[0] if result else None
+
+    def clear_setgroupchat_confirmation(self, user_id: int, group_id: int):
+        """Clear pending confirmation"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            DELETE FROM setgroupchat_confirmations
+            WHERE user_id = ? AND group_id = ?
+        ''', (user_id, group_id))
+        conn.commit()
+        conn.close()
+
     # Streak management
     def update_streak(self, user_id: int, habit_id: int, completion_date: str) -> Dict:
         """Update habit streak and return streak info with milestone status"""
