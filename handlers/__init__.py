@@ -58,6 +58,12 @@ from .rewards import (
     add_reward_start,
     add_reward_get_details,
     add_reward_finish,
+    edit_reward_list,
+    edit_reward_select,
+    edit_reward_name_start,
+    edit_reward_name_finish,
+    edit_reward_price_start,
+    edit_reward_price_finish,
     delete_reward_list,
     delete_reward_confirm
 )
@@ -134,6 +140,12 @@ __all__ = [
     'add_reward_start',
     'add_reward_get_details',
     'add_reward_finish',
+    'edit_reward_list',
+    'edit_reward_select',
+    'edit_reward_name_start',
+    'edit_reward_name_finish',
+    'edit_reward_price_start',
+    'edit_reward_price_finish',
     'delete_reward_list',
     'delete_reward_confirm',
     # Points

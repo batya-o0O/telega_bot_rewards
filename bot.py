@@ -27,7 +27,8 @@ from constants import (
     EDITING_HABIT, EDITING_HABIT_TYPE, ADDING_REWARD, ADDING_REWARD_TYPE,
     CONVERTING_POINTS_FROM, CONVERTING_POINTS_TO, CONVERTING_POINTS_AMOUNT,
     ADDING_TOWNMALL_ITEM, ADDING_TOWNMALL_PHOTO,
-    EDITING_TOWNMALL_ITEM, EDITING_TOWNMALL_PHOTO
+    EDITING_TOWNMALL_ITEM, EDITING_TOWNMALL_PHOTO,
+    EDITING_REWARD_NAME, EDITING_REWARD_PRICE
 )
 
 # Import all handlers
@@ -51,6 +52,9 @@ from handlers import (
     payment_select_type, payment_add_amount, show_payment_screen,
     payment_clear, payment_confirm,
     my_rewards, add_reward_start, add_reward_get_details, add_reward_finish,
+    edit_reward_list, edit_reward_select,
+    edit_reward_name_start, edit_reward_name_finish,
+    edit_reward_price_start, edit_reward_price_finish,
     delete_reward_list, delete_reward_confirm,
     # Points
     convert_points_start, convert_points_select_to,
@@ -200,8 +204,30 @@ def main():
 
     # My rewards
     application.add_handler(CallbackQueryHandler(my_rewards, pattern="^my_rewards$"))
+    application.add_handler(CallbackQueryHandler(edit_reward_list, pattern="^edit_reward_list$"))
+    application.add_handler(CallbackQueryHandler(edit_reward_select, pattern=r"^edit_reward_select_\d+$"))
     application.add_handler(CallbackQueryHandler(delete_reward_list, pattern="^delete_reward_list$"))
     application.add_handler(CallbackQueryHandler(delete_reward_confirm, pattern=r"^confirm_delete_reward_\d+$"))
+
+    # Edit reward - Name conversation
+    edit_reward_name_conv = ConversationHandler(
+        entry_points=[CallbackQueryHandler(edit_reward_name_start, pattern=r"^edit_reward_name_\d+$")],
+        states={
+            EDITING_REWARD_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_reward_name_finish)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)],
+    )
+    application.add_handler(edit_reward_name_conv)
+
+    # Edit reward - Price conversation
+    edit_reward_price_conv = ConversationHandler(
+        entry_points=[CallbackQueryHandler(edit_reward_price_start, pattern=r"^edit_reward_price_\d+$")],
+        states={
+            EDITING_REWARD_PRICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_reward_price_finish)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)],
+    )
+    application.add_handler(edit_reward_price_conv)
 
     # Town Mall - Add item conversation
     add_townmall_item_conv = ConversationHandler(

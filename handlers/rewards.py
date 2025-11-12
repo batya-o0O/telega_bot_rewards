@@ -535,6 +535,7 @@ async def my_rewards(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     keyboard = [
         [InlineKeyboardButton("Add Reward", callback_data="add_reward")],
+        [InlineKeyboardButton("Edit Reward", callback_data="edit_reward_list")],
         [InlineKeyboardButton("Delete Reward", callback_data="delete_reward_list")],
         [InlineKeyboardButton("Back to Menu", callback_data="back_to_menu")],
     ]
@@ -657,6 +658,203 @@ async def delete_reward_confirm(update: Update, context: ContextTypes.DEFAULT_TY
 
     await query.edit_message_text("Reward deleted successfully!")
     await my_rewards(update, context)
+
+
+async def edit_reward_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show list of rewards to edit"""
+    query = update.callback_query
+    await query.answer()
+
+    user_id = update.effective_user.id
+    rewards = db.get_user_rewards(user_id)
+
+    if not rewards:
+        await query.edit_message_text("No rewards to edit.")
+        return
+
+    keyboard = []
+    for reward in rewards:
+        point_type = reward[6] if len(reward) > 6 else 'other'
+        type_emoji = POINT_TYPES.get(point_type, '⭐')
+        keyboard.append([InlineKeyboardButton(
+            f"✏️ {reward[2]} ({reward[3]} {type_emoji})",
+            callback_data=f"edit_reward_select_{reward[0]}"
+        )])
+    keyboard.append([InlineKeyboardButton("Back", callback_data="my_rewards")])
+
+    await query.edit_message_text(
+        "Select a reward to edit:",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+
+async def edit_reward_select(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show edit options for selected reward"""
+    query = update.callback_query
+    await query.answer()
+
+    reward_id = int(query.data.split('_')[3])
+
+    # Get reward details
+    conn = db.get_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT name, price, point_type FROM rewards WHERE id = ?', (reward_id,))
+    reward = cursor.fetchone()
+    conn.close()
+
+    if not reward:
+        await query.edit_message_text("❌ Reward not found!")
+        return
+
+    name, price, point_type = reward
+    type_emoji = POINT_TYPES.get(point_type, '⭐')
+    type_name = point_type.replace('_', ' ').title()
+
+    # Store reward ID in context
+    context.user_data['editing_reward_id'] = reward_id
+
+    keyboard = [
+        [InlineKeyboardButton("✏️ Edit Name", callback_data=f"edit_reward_name_{reward_id}")],
+        [InlineKeyboardButton("💰 Edit Price", callback_data=f"edit_reward_price_{reward_id}")],
+        [InlineKeyboardButton("Back", callback_data="edit_reward_list")],
+    ]
+
+    await query.edit_message_text(
+        f"Editing: {name}\n"
+        f"Current price: {price} {type_emoji} {type_name}\n\n"
+        "What would you like to edit?",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+
+async def edit_reward_name_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Start editing reward name"""
+    from constants import EDITING_REWARD_NAME
+
+    query = update.callback_query
+    await query.answer()
+
+    reward_id = int(query.data.split('_')[3])
+    context.user_data['editing_reward_id'] = reward_id
+
+    # Get current name
+    conn = db.get_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT name FROM rewards WHERE id = ?', (reward_id,))
+    result = cursor.fetchone()
+    conn.close()
+
+    if not result:
+        await query.edit_message_text("❌ Reward not found!")
+        return ConversationHandler.END
+
+    current_name = result[0]
+
+    await query.edit_message_text(
+        f"Current name: {current_name}\n\n"
+        "Please enter the new name for this reward:"
+    )
+
+    return EDITING_REWARD_NAME
+
+
+async def edit_reward_name_finish(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Finish editing reward name"""
+    from telegram.ext import ConversationHandler
+
+    new_name = update.message.text.strip()
+    reward_id = context.user_data.get('editing_reward_id')
+
+    if not reward_id:
+        await update.message.reply_text("❌ Error: Reward ID not found")
+        return ConversationHandler.END
+
+    # Update reward name
+    conn = db.get_connection()
+    cursor = conn.cursor()
+    cursor.execute('UPDATE rewards SET name = ? WHERE id = ?', (new_name, reward_id))
+    conn.commit()
+    conn.close()
+
+    await update.message.reply_text(
+        f"✅ Reward name updated to: {new_name}",
+        reply_markup=get_main_menu_keyboard()
+    )
+
+    del context.user_data['editing_reward_id']
+    return ConversationHandler.END
+
+
+async def edit_reward_price_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Start editing reward price"""
+    from constants import EDITING_REWARD_PRICE
+
+    query = update.callback_query
+    await query.answer()
+
+    reward_id = int(query.data.split('_')[3])
+    context.user_data['editing_reward_id'] = reward_id
+
+    # Get current price
+    conn = db.get_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT price, point_type FROM rewards WHERE id = ?', (reward_id,))
+    result = cursor.fetchone()
+    conn.close()
+
+    if not result:
+        await query.edit_message_text("❌ Reward not found!")
+        return ConversationHandler.END
+
+    current_price, point_type = result
+    type_emoji = POINT_TYPES.get(point_type, '⭐')
+    type_name = point_type.replace('_', ' ').title()
+
+    await query.edit_message_text(
+        f"Current price: {current_price} {type_emoji} {type_name}\n\n"
+        "Please enter the new price (number only):"
+    )
+
+    return EDITING_REWARD_PRICE
+
+
+async def edit_reward_price_finish(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Finish editing reward price"""
+    from telegram.ext import ConversationHandler
+
+    reward_id = context.user_data.get('editing_reward_id')
+
+    if not reward_id:
+        await update.message.reply_text("❌ Error: Reward ID not found")
+        return ConversationHandler.END
+
+    try:
+        new_price = int(update.message.text.strip())
+
+        if new_price < 1:
+            await update.message.reply_text("❌ Price must be at least 1. Please try again:")
+            from constants import EDITING_REWARD_PRICE
+            return EDITING_REWARD_PRICE
+
+        # Update reward price
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute('UPDATE rewards SET price = ? WHERE id = ?', (new_price, reward_id))
+        conn.commit()
+        conn.close()
+
+        await update.message.reply_text(
+            f"✅ Reward price updated to: {new_price}",
+            reply_markup=get_main_menu_keyboard()
+        )
+
+        del context.user_data['editing_reward_id']
+        return ConversationHandler.END
+
+    except ValueError:
+        await update.message.reply_text("❌ Invalid price. Please enter a number:")
+        from constants import EDITING_REWARD_PRICE
+        return EDITING_REWARD_PRICE
 
 
 async def bazar_own_item(update: Update, context: ContextTypes.DEFAULT_TYPE):
