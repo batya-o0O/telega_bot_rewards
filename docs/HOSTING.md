@@ -5,12 +5,15 @@ This guide covers multiple deployment options for hosting your Telegram bot.
 ## Table of Contents
 
 1. [Prerequisites](#prerequisites)
-2. [Option 1: VPS Hosting (Recommended)](#option-1-vps-hosting-recommended)
-3. [Option 2: Railway (Free Tier Available)](#option-2-railway-free-tier-available)
-4. [Option 3: Docker Deployment](#option-3-docker-deployment)
-5. [Option 4: PythonAnywhere](#option-4-pythonanywhere)
-6. [Post-Deployment Setup](#post-deployment-setup)
-7. [Monitoring and Maintenance](#monitoring-and-maintenance)
+2. [Database Options](#database-options)
+   - [Using Supabase (PostgreSQL)](#using-supabase-postgresql)
+   - [Using SQLite (Default)](#using-sqlite-default)
+3. [Option 1: VPS Hosting (Recommended)](#option-1-vps-hosting-recommended)
+4. [Option 2: Railway (Free Tier Available)](#option-2-railway-free-tier-available)
+5. [Option 3: Docker Deployment](#option-3-docker-deployment)
+6. [Option 4: PythonAnywhere](#option-4-pythonanywhere)
+7. [Post-Deployment Setup](#post-deployment-setup)
+8. [Monitoring and Maintenance](#monitoring-and-maintenance)
 
 ---
 
@@ -22,6 +25,104 @@ Before deploying, ensure you have:
 - Git installed locally
 - Your bot code tested locally
 - Database backups (if migrating)
+
+---
+
+## Database Options
+
+The bot supports two database options: **PostgreSQL (Supabase)** or **SQLite** (default).
+
+### Using Supabase (PostgreSQL)
+
+**Best for:** Production deployments, PythonAnywhere, Railway, any cloud hosting
+**Pros:** Better reliability, automatic backups, accessible from anywhere, better concurrency
+**Cost:** Free tier available (500MB database, up to 2 organizations)
+
+#### Step 1: Create Supabase Project
+
+1. Go to [supabase.com](https://supabase.com) and sign up
+2. Click "New Project"
+3. Choose your organization
+4. Fill in project details:
+   - **Name**: telegram-rewards-bot
+   - **Database Password**: Generate a strong password (save it!)
+   - **Region**: Choose closest to your hosting location
+5. Click "Create new project" (takes ~2 minutes)
+
+#### Step 2: Get Database Connection String
+
+1. In your Supabase project dashboard, go to **Settings** → **Database**
+2. Scroll to **Connection string** section
+3. Select **URI** format
+4. Copy the connection string (looks like):
+   ```
+   postgresql://postgres:[YOUR-PASSWORD]@db.xxx.supabase.co:5432/postgres
+   ```
+5. Replace `[YOUR-PASSWORD]` with your actual database password
+
+#### Step 3: Update Bot Configuration
+
+In your project, create or update `.env` file:
+
+```bash
+# For Supabase/PostgreSQL
+DATABASE_URL=postgresql://postgres:your_password@db.xxx.supabase.co:5432/postgres
+TELEGRAM_BOT_TOKEN=your_bot_token_here
+```
+
+#### Step 4: Update bot.py to Use PostgreSQL
+
+Edit your [bot.py](../bot.py) file:
+
+```python
+# At the top, change this line:
+# from database import Database
+# To:
+from database_postgres import Database
+
+# Then initialize database (no path needed):
+db = Database()  # Uses DATABASE_URL from environment
+```
+
+#### Step 5: Install PostgreSQL Dependencies
+
+```bash
+pip install psycopg2-binary
+# Or if already in requirements.txt:
+pip install -r requirements.txt
+```
+
+#### Step 6: Migrate Existing Data (Optional)
+
+If you have existing SQLite data to migrate:
+
+```bash
+python scripts/migrate_sqlite_to_postgres.py
+```
+
+This will copy all your users, habits, rewards, etc. from `bot.db` to PostgreSQL.
+
+#### Supabase Dashboard Features
+
+After migration, you can use Supabase dashboard to:
+- View all tables and data (Table Editor)
+- Run SQL queries (SQL Editor)
+- Set up automatic backups (free tier: daily backups)
+- Monitor database performance
+- View real-time logs
+
+### Using SQLite (Default)
+
+**Best for:** Development, testing, simple VPS deployments
+**Pros:** Simple, no external dependencies, file-based
+**Cons:** Single file can be lost, harder to access remotely, worse concurrency
+
+The bot uses SQLite by default with `bot.db` file. No additional setup needed.
+
+**For production with SQLite:**
+- Set up regular backups (see VPS backup script below)
+- Keep `bot.db` in a persistent location
+- Not recommended for PythonAnywhere or Railway
 
 ---
 
@@ -220,8 +321,14 @@ git push
    - Value: Your bot token
 6. Railway will automatically deploy
 
-### Step 3: Configure Volume for Database Persistence
+### Step 3: Configure Database
 
+**Option A: Use Supabase (Recommended)**
+1. Set up Supabase as described in [Database Options](#using-supabase-postgresql)
+2. Add `DATABASE_URL` environment variable in Railway
+3. Update bot.py to use `database_postgres.py`
+
+**Option B: Use SQLite with Volume**
 1. In Railway dashboard, go to your project
 2. Click "Variables" tab
 3. Under "Volumes", click "Add Volume"
@@ -325,34 +432,109 @@ docker-compose up -d
 **Cost:** Free tier available, $5/month for always-on
 **Pros:** Python-friendly, simple setup
 **Cons:** Free tier has limitations
+**⚠️ Important:** Use Supabase for database - PythonAnywhere's file system can lose data
 
-### Step 1: Sign Up
+### Step 1: Set Up Supabase (Required)
+
+**PythonAnywhere can lose your SQLite database file**, so use Supabase instead:
+
+1. Follow [Supabase setup guide](#using-supabase-postgresql) above
+2. Get your `DATABASE_URL` connection string
+3. Save it - you'll add it to `.env` in Step 3
+
+### Step 2: Sign Up for PythonAnywhere
 
 1. Go to [pythonanywhere.com](https://www.pythonanywhere.com)
 2. Create free account
 3. Upgrade to "Hacker" plan ($5/month) for always-on tasks
 
-### Step 2: Upload Code
+### Step 3: Upload Code and Configure
 
-In PythonAnywhere dashboard:
+In PythonAnywhere Bash console:
 
 ```bash
-# Open Bash console
+# Clone repository
 git clone https://github.com/yourusername/telega_bot_rewards.git
 cd telega_bot_rewards
+
+# Create virtual environment
 python3 -m venv venv
 source venv/bin/activate
+
+# Install dependencies (includes psycopg2 for PostgreSQL)
 pip install -r requirements.txt
+
+# Create .env file
+nano .env
 ```
 
-Create `.env` file with your bot token.
+Add to `.env`:
+```
+# Your bot token
+TELEGRAM_BOT_TOKEN=your_token_here
 
-### Step 3: Create Always-On Task
+# Your Supabase connection string
+DATABASE_URL=postgresql://postgres:your_password@db.xxx.supabase.co:5432/postgres
+```
 
-1. Go to "Tasks" tab
-2. Create new task
-3. Command: `/home/yourusername/telega_bot_rewards/venv/bin/python /home/yourusername/telega_bot_rewards/bot.py`
-4. Start task
+Save with `Ctrl+X`, `Y`, `Enter`.
+
+### Step 4: Update bot.py for PostgreSQL
+
+Edit bot.py to use PostgreSQL:
+
+```bash
+nano bot.py
+```
+
+Change the import at the top:
+```python
+# Change from:
+from database import Database
+
+# To:
+from database_postgres import Database
+```
+
+And update initialization:
+```python
+# Change from:
+db = Database("bot.db")
+
+# To:
+db = Database()  # Uses DATABASE_URL from .env
+```
+
+Save and exit.
+
+### Step 5: Test the Bot
+
+```bash
+python bot.py
+```
+
+If it starts without errors, press `Ctrl+C` to stop.
+
+### Step 6: Create Always-On Task
+
+1. Go to "Tasks" tab in PythonAnywhere
+2. Click "Create a new scheduled task"
+3. For command, enter:
+   ```
+   /home/yourusername/telega_bot_rewards/venv/bin/python /home/yourusername/telega_bot_rewards/bot.py
+   ```
+4. Click "Create"
+5. Your bot will now run 24/7!
+
+### Step 7: Monitor Your Bot
+
+Check if running:
+- Go to "Tasks" tab
+- Look for your bot task - should show "Running"
+- Click "View log" to see output
+
+To restart:
+- Click "Stop" then start it again in Tasks tab
 
 ---
 
