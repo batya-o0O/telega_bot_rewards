@@ -435,6 +435,24 @@ async def town_mall_add_photo(update: Update, context: ContextTypes.DEFAULT_TYPE
             stock=item_data['stock']
         )
 
+        # Send group announcement
+        user_data = db.get_user(user_id)
+        group_id = user_data[3]
+        user_name = update.effective_user.first_name or update.effective_user.username or "Someone"
+
+        # Format stock display for announcement
+        if item_data['stock'] == -1:
+            stock_text = ""
+        else:
+            stock_text = f" • 📦 {item_data['stock']} in stock"
+
+        announcement = "🏪 New Town Mall Item!\n\n"
+        announcement += f"{user_name} is now a sponsor and added:\n"
+        announcement += f"🏷️ '{item_data['name']}'\n"
+        announcement += f"💰 {item_data['price']} coins{stock_text}"
+
+        await send_group_announcement(context, group_id, announcement)
+
         await update.message.reply_text(
             f"✅ Item '{item_data['name']}' added successfully!\n\n"
             "It's now available in Town Mall.",
@@ -483,6 +501,24 @@ async def town_mall_add_photo(update: Update, context: ContextTypes.DEFAULT_TYPE
         image_filename=filename,
         stock=item_data['stock']
     )
+
+    # Send group announcement
+    user_data = db.get_user(user_id)
+    group_id = user_data[3]
+    user_name = update.effective_user.first_name or update.effective_user.username or "Someone"
+
+    # Format stock display for announcement
+    if item_data['stock'] == -1:
+        stock_text = ""
+    else:
+        stock_text = f" • 📦 {item_data['stock']} in stock"
+
+    announcement = "🏪 New Town Mall Item!\n\n"
+    announcement += f"{user_name} is now a sponsor and added:\n"
+    announcement += f"🏷️ '{item_data['name']}'\n"
+    announcement += f"💰 {item_data['price']} coins{stock_text}"
+
+    await send_group_announcement(context, group_id, announcement)
 
     await update.message.reply_text(
         f"✅ Item '{item_data['name']}' added successfully with photo!\n\n"
