@@ -1300,13 +1300,36 @@ class Database:
         return cursor.rowcount > 0
 
     def delete_town_mall_item(self, item_id: int) -> bool:
-        """Delete (mark as unavailable) a town mall item"""
+        """
+        Delete (mark as unavailable) a town mall item and clean up associated image
+        Returns True if item was successfully marked as unavailable
+        """
         conn = self.get_connection()
         cursor = conn.cursor()
+
+        # Get image filename before deleting
+        cursor.execute('SELECT image_filename FROM town_mall_items WHERE id = ?', (item_id,))
+        result = cursor.fetchone()
+        image_filename = result[0] if result else None
+
+        # Mark as unavailable
         cursor.execute('UPDATE town_mall_items SET available = 0 WHERE id = ?', (item_id,))
+        success = cursor.rowcount > 0
+
         conn.commit()
         conn.close()
-        return cursor.rowcount > 0
+
+        # Delete image file if exists
+        if success and image_filename:
+            import os
+            image_path = os.path.join("images", "townmall", image_filename)
+            if os.path.exists(image_path):
+                try:
+                    os.remove(image_path)
+                except Exception as e:
+                    print(f"Warning: Could not delete image {image_path}: {e}")
+
+        return success
 
     def get_user_town_mall_items(self, sponsor_id: int):
         """Get all town mall items created by a specific sponsor"""

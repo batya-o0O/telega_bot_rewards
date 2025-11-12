@@ -337,6 +337,8 @@ async def town_mall_add_start(update: Update, context: ContextTypes.DEFAULT_TYPE
     await query.answer()
 
     text = "➕ Add New Town Mall Item\n\n"
+    text += "You will be the sponsor of this item!\n"
+    text += "When people buy it, you'll receive coins from their purchase.\n\n"
     text += "Please send item details in this format:\n\n"
     text += "Name\n"
     text += "Description\n"
@@ -489,6 +491,196 @@ async def town_mall_add_photo(update: Update, context: ContextTypes.DEFAULT_TYPE
     )
 
     del context.user_data['new_townmall_item']
+    return ConversationHandler.END
+
+
+async def town_mall_edit_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Start editing a town mall item"""
+    query = update.callback_query
+    await query.answer()
+
+    item_id = int(query.data.split('_')[-1])
+    user_id = update.effective_user.id
+
+    # Get item and verify ownership
+    item = db.get_town_mall_item(item_id)
+    if not item:
+        await query.edit_message_text("❌ Item not found!")
+        return
+
+    item_id, name, description, price, image_filename, stock, available, sponsor_id = item
+
+    # Verify user is the sponsor
+    if sponsor_id != user_id:
+        await query.answer("❌ You can only edit your own items!", show_alert=True)
+        return
+
+    # Store item ID for editing
+    context.user_data['editing_townmall_item_id'] = item_id
+
+    text = "✏️ Edit Town Mall Item\n\n"
+    text += f"Current item: {name}\n\n"
+    text += "Send new item details in this format:\n\n"
+    text += "Name\n"
+    text += "Description\n"
+    text += "Price (coins)\n"
+    text += "Stock (-1 for unlimited)\n\n"
+    text += "Current values:\n"
+    text += f"{name}\n"
+    text += f"{description}\n"
+    text += f"{price}\n"
+    text += f"{stock}\n\n"
+    text += "Send /cancel to abort."
+
+    try:
+        await query.message.delete()
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=text
+        )
+    except:
+        await query.edit_message_text(text)
+
+    from constants import EDITING_TOWNMALL_ITEM
+    return EDITING_TOWNMALL_ITEM
+
+
+async def town_mall_edit_get_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Get updated item details and ask for photo"""
+    try:
+        lines = update.message.text.strip().split('\n')
+
+        if len(lines) < 4:
+            await update.message.reply_text(
+                "❌ Invalid format. Please provide all 4 fields:\n"
+                "Name\nDescription\nPrice\nStock\n\n"
+                "Send /cancel to abort."
+            )
+            from constants import EDITING_TOWNMALL_ITEM
+            return EDITING_TOWNMALL_ITEM
+
+        name = lines[0].strip()
+        description = lines[1].strip()
+        price = int(lines[2].strip())
+        stock = int(lines[3].strip())
+
+        if price <= 0:
+            await update.message.reply_text("❌ Price must be positive. Try again:")
+            from constants import EDITING_TOWNMALL_ITEM
+            return EDITING_TOWNMALL_ITEM
+
+        # Store updates in context
+        context.user_data['edit_townmall_item'] = {
+            'name': name,
+            'description': description,
+            'price': price,
+            'stock': stock
+        }
+
+        await update.message.reply_text(
+            "Great! Now send me a NEW photo to replace the old one, or send /keep to keep the existing photo."
+        )
+
+        from constants import EDITING_TOWNMALL_PHOTO
+        return EDITING_TOWNMALL_PHOTO
+
+    except (ValueError, IndexError):
+        await update.message.reply_text(
+            "❌ Invalid format. Make sure Price and Stock are numbers.\n\n"
+            "Try again or send /cancel to abort."
+        )
+        from constants import EDITING_TOWNMALL_ITEM
+        return EDITING_TOWNMALL_ITEM
+
+
+async def town_mall_edit_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle photo update or keep existing"""
+    from telegram.ext import ConversationHandler
+    from constants import EDITING_TOWNMALL_PHOTO
+
+    item_id = context.user_data.get('editing_townmall_item_id')
+    item_data = context.user_data.get('edit_townmall_item')
+
+    if not item_id or not item_data:
+        await update.message.reply_text("❌ Error: Item data not found")
+        return ConversationHandler.END
+
+    # Check if user sent /keep command
+    if update.message.text and update.message.text == '/keep':
+        # Keep existing photo, just update details
+        db.update_town_mall_item(
+            item_id=item_id,
+            name=item_data['name'],
+            description=item_data['description'],
+            price_coins=item_data['price'],
+            stock=item_data['stock']
+        )
+
+        await update.message.reply_text(
+            f"✅ Item '{item_data['name']}' updated successfully!\n\n"
+            "The changes are now live in Town Mall.",
+            reply_markup=get_main_menu_keyboard()
+        )
+
+        del context.user_data['editing_townmall_item_id']
+        del context.user_data['edit_townmall_item']
+        return ConversationHandler.END
+
+    # Check if photo was sent
+    if not update.message.photo:
+        await update.message.reply_text(
+            "❌ Please send a photo, or send /keep to keep the existing one."
+        )
+        return EDITING_TOWNMALL_PHOTO
+
+    # Get old item to delete old image
+    old_item = db.get_town_mall_item(item_id)
+    old_image_filename = old_item[4] if old_item else None
+
+    # Download new photo
+    photo = update.message.photo[-1]  # Get highest resolution
+    file = await context.bot.get_file(photo.file_id)
+
+    # Generate filename
+    import os
+    from datetime import datetime
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    filename = f"item_{timestamp}.jpg"
+    filepath = os.path.join("images", "townmall", filename)
+
+    # Create directory if doesn't exist
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
+
+    # Download file
+    await file.download_to_drive(filepath)
+
+    # Update item with new image
+    db.update_town_mall_item(
+        item_id=item_id,
+        name=item_data['name'],
+        description=item_data['description'],
+        price_coins=item_data['price'],
+        image_filename=filename,
+        stock=item_data['stock']
+    )
+
+    # Delete old image if exists
+    if old_image_filename:
+        old_image_path = os.path.join("images", "townmall", old_image_filename)
+        if os.path.exists(old_image_path):
+            try:
+                os.remove(old_image_path)
+            except Exception as e:
+                print(f"Warning: Could not delete old image {old_image_path}: {e}")
+
+    await update.message.reply_text(
+        f"✅ Item '{item_data['name']}' updated successfully with new photo!\n\n"
+        "The changes are now live in Town Mall.",
+        reply_markup=get_main_menu_keyboard()
+    )
+
+    del context.user_data['editing_townmall_item_id']
+    del context.user_data['edit_townmall_item']
     return ConversationHandler.END
 
 

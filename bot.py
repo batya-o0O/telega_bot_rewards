@@ -26,7 +26,8 @@ from constants import (
     CREATING_GROUP, JOINING_GROUP, ADDING_HABIT, ADDING_HABIT_TYPE,
     EDITING_HABIT, EDITING_HABIT_TYPE, ADDING_REWARD, ADDING_REWARD_TYPE,
     CONVERTING_POINTS_FROM, CONVERTING_POINTS_TO, CONVERTING_POINTS_AMOUNT,
-    ADDING_TOWNMALL_ITEM, ADDING_TOWNMALL_PHOTO
+    ADDING_TOWNMALL_ITEM, ADDING_TOWNMALL_PHOTO,
+    EDITING_TOWNMALL_ITEM, EDITING_TOWNMALL_PHOTO
 )
 
 # Import all handlers
@@ -60,6 +61,7 @@ from handlers import (
     town_mall, view_town_mall_item, buy_town_mall_item,
     town_mall_purchase_history, town_mall_my_items,
     town_mall_add_start, town_mall_add_get_details, town_mall_add_photo,
+    town_mall_edit_start, town_mall_edit_get_details, town_mall_edit_photo,
     town_mall_dummy_callback
 )
 
@@ -212,6 +214,20 @@ def main():
         fallbacks=[CommandHandler("cancel", cancel)],
     )
     application.add_handler(add_townmall_item_conv)
+
+    # Town Mall - Edit item conversation
+    edit_townmall_item_conv = ConversationHandler(
+        entry_points=[CallbackQueryHandler(town_mall_edit_start, pattern=r"^townmall_edit_\d+$")],
+        states={
+            EDITING_TOWNMALL_ITEM: [MessageHandler(filters.TEXT & ~filters.COMMAND, town_mall_edit_get_details)],
+            EDITING_TOWNMALL_PHOTO: [
+                MessageHandler(filters.PHOTO, town_mall_edit_photo),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, town_mall_edit_photo),
+            ],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)],
+    )
+    application.add_handler(edit_townmall_item_conv)
 
     # Town Mall
     application.add_handler(CallbackQueryHandler(town_mall, pattern="^town_mall$"))
