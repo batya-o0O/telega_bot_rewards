@@ -338,7 +338,7 @@ async def town_mall_add_start(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     text = "➕ Add New Town Mall Item\n\n"
     text += "You will be the sponsor of this item!\n"
-    text += "When people buy it, you'll receive coins from their purchase.\n\n"
+    text += "This is a way to contribute items to the Town Mall.\n\n"
     text += "Please send item details in this format:\n\n"
     text += "Name\n"
     text += "Description\n"
