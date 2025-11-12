@@ -74,6 +74,10 @@ from .townmall import (
     view_town_mall_item,
     buy_town_mall_item,
     town_mall_purchase_history,
+    town_mall_my_items,
+    town_mall_add_start,
+    town_mall_add_get_details,
+    town_mall_add_photo,
     town_mall_dummy_callback
 )
 
@@ -138,5 +142,9 @@ __all__ = [
     'view_town_mall_item',
     'buy_town_mall_item',
     'town_mall_purchase_history',
+    'town_mall_my_items',
+    'town_mall_add_start',
+    'town_mall_add_get_details',
+    'town_mall_add_photo',
     'town_mall_dummy_callback',
 ]

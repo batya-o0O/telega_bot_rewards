@@ -1124,14 +1124,14 @@ class Database:
 
         if available_only:
             cursor.execute('''
-                SELECT id, name, description, price_coins, image_filename, stock, available
+                SELECT id, name, description, price_coins, image_filename, stock, available, sponsor_id
                 FROM town_mall_items
                 WHERE available = 1
                 ORDER BY price_coins ASC
             ''')
         else:
             cursor.execute('''
-                SELECT id, name, description, price_coins, image_filename, stock, available
+                SELECT id, name, description, price_coins, image_filename, stock, available, sponsor_id
                 FROM town_mall_items
                 ORDER BY price_coins ASC
             ''')
@@ -1145,7 +1145,7 @@ class Database:
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute('''
-            SELECT id, name, description, price_coins, image_filename, stock, available
+            SELECT id, name, description, price_coins, image_filename, stock, available, sponsor_id
             FROM town_mall_items
             WHERE id = ?
         ''', (item_id,))
@@ -1241,3 +1241,83 @@ class Database:
         purchases = cursor.fetchall()
         conn.close()
         return purchases
+
+    def add_town_mall_item(self, sponsor_id: int, name: str, description: str,
+                           price_coins: int, image_filename: str = None,
+                           stock: int = -1) -> int:
+        """
+        Add a new item to town mall
+        Returns the new item ID
+        """
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO town_mall_items
+            (name, description, price_coins, image_filename, stock, sponsor_id)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (name, description, price_coins, image_filename, stock, sponsor_id))
+        item_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        return item_id
+
+    def update_town_mall_item(self, item_id: int, name: str = None,
+                               description: str = None, price_coins: int = None,
+                               image_filename: str = None, stock: int = None) -> bool:
+        """Update town mall item (only fields that are not None)"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        # Build dynamic update query
+        updates = []
+        params = []
+
+        if name is not None:
+            updates.append('name = ?')
+            params.append(name)
+        if description is not None:
+            updates.append('description = ?')
+            params.append(description)
+        if price_coins is not None:
+            updates.append('price_coins = ?')
+            params.append(price_coins)
+        if image_filename is not None:
+            updates.append('image_filename = ?')
+            params.append(image_filename)
+        if stock is not None:
+            updates.append('stock = ?')
+            params.append(stock)
+
+        if not updates:
+            conn.close()
+            return False
+
+        params.append(item_id)
+        query = f"UPDATE town_mall_items SET {', '.join(updates)} WHERE id = ?"
+        cursor.execute(query, params)
+        conn.commit()
+        conn.close()
+        return cursor.rowcount > 0
+
+    def delete_town_mall_item(self, item_id: int) -> bool:
+        """Delete (mark as unavailable) a town mall item"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute('UPDATE town_mall_items SET available = 0 WHERE id = ?', (item_id,))
+        conn.commit()
+        conn.close()
+        return cursor.rowcount > 0
+
+    def get_user_town_mall_items(self, sponsor_id: int):
+        """Get all town mall items created by a specific sponsor"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT id, name, description, price_coins, image_filename, stock, available
+            FROM town_mall_items
+            WHERE sponsor_id = ?
+            ORDER BY created_at DESC
+        ''', (sponsor_id,))
+        items = cursor.fetchall()
+        conn.close()
+        return items

@@ -25,7 +25,8 @@ from telegram.warnings import PTBUserWarning
 from constants import (
     CREATING_GROUP, JOINING_GROUP, ADDING_HABIT, ADDING_HABIT_TYPE,
     EDITING_HABIT, EDITING_HABIT_TYPE, ADDING_REWARD, ADDING_REWARD_TYPE,
-    CONVERTING_POINTS_FROM, CONVERTING_POINTS_TO, CONVERTING_POINTS_AMOUNT
+    CONVERTING_POINTS_FROM, CONVERTING_POINTS_TO, CONVERTING_POINTS_AMOUNT,
+    ADDING_TOWNMALL_ITEM, ADDING_TOWNMALL_PHOTO
 )
 
 # Import all handlers
@@ -57,7 +58,9 @@ from handlers import (
     monthly_report, monthlyreport,
     # Town Mall
     town_mall, view_town_mall_item, buy_town_mall_item,
-    town_mall_purchase_history, town_mall_dummy_callback
+    town_mall_purchase_history, town_mall_my_items,
+    town_mall_add_start, town_mall_add_get_details, town_mall_add_photo,
+    town_mall_dummy_callback
 )
 
 # Load environment variables
@@ -196,11 +199,26 @@ def main():
     application.add_handler(CallbackQueryHandler(delete_reward_list, pattern="^delete_reward_list$"))
     application.add_handler(CallbackQueryHandler(delete_reward_confirm, pattern=r"^confirm_delete_reward_\d+$"))
 
+    # Town Mall - Add item conversation
+    add_townmall_item_conv = ConversationHandler(
+        entry_points=[CallbackQueryHandler(town_mall_add_start, pattern="^townmall_add$")],
+        states={
+            ADDING_TOWNMALL_ITEM: [MessageHandler(filters.TEXT & ~filters.COMMAND, town_mall_add_get_details)],
+            ADDING_TOWNMALL_PHOTO: [
+                MessageHandler(filters.PHOTO, town_mall_add_photo),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, town_mall_add_photo),
+            ],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)],
+    )
+    application.add_handler(add_townmall_item_conv)
+
     # Town Mall
     application.add_handler(CallbackQueryHandler(town_mall, pattern="^town_mall$"))
     application.add_handler(CallbackQueryHandler(view_town_mall_item, pattern=r"^townmall_view_\d+$"))
     application.add_handler(CallbackQueryHandler(buy_town_mall_item, pattern=r"^townmall_buy_\d+$"))
     application.add_handler(CallbackQueryHandler(town_mall_purchase_history, pattern="^townmall_history$"))
+    application.add_handler(CallbackQueryHandler(town_mall_my_items, pattern="^townmall_my_items$"))
     application.add_handler(CallbackQueryHandler(town_mall_dummy_callback, pattern="^townmall_(unavailable|outofstock|notenough)$"))
 
     # Common handlers
