@@ -434,6 +434,15 @@ class Database:
         if cursor.rowcount > 0:
             # Remove 1 point of the habit's type
             cursor.execute(f'UPDATE users SET {point_column} = {point_column} - 1 WHERE telegram_id = ?', (user_id,))
+
+            # Deduct from monthly stats
+            current_month = datetime.now().strftime('%Y-%m')
+            cursor.execute('''
+                UPDATE monthly_stats
+                SET points_earned = points_earned - 1
+                WHERE user_id = ? AND month = ?
+            ''', (user_id, current_month))
+
             conn.commit()
             conn.close()
             return True
