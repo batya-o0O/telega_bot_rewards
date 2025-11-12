@@ -129,17 +129,17 @@ async def bazar(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         for reward in rewards:
             # Reward columns: id, owner_id, name, price, description, is_active, point_type, created_at
-            # Plus joined columns: owner_name, owner_username
+            # Plus joined columns: first_name, username
             reward_id = reward[0]
             owner_id = reward[1]
             reward_name = reward[2]
             price = reward[3]
             point_type = reward[6] if len(reward) > 6 else 'other'
-            owner_name = reward[8] if len(reward) > 8 else None
+            owner_first_name = reward[8] if len(reward) > 8 else None
             owner_username = reward[9] if len(reward) > 9 else None
 
             # Get owner display name
-            owner_display = owner_name or owner_username or f"User {owner_id}"
+            owner_display = owner_first_name or owner_username or f"User {owner_id}"
 
             type_emoji = POINT_TYPES.get(point_type, '⭐')
             type_name = point_type.replace('_', ' ').title()

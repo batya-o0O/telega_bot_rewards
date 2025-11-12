@@ -506,7 +506,7 @@ class Database:
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute('''
-            SELECT r.*, u.name, u.username
+            SELECT r.*, u.first_name, u.username
             FROM rewards r
             JOIN users u ON r.owner_id = u.telegram_id
             WHERE u.group_id = ? AND r.is_active = 1
