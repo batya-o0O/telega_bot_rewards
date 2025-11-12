@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  telegram-bot:
+    build: .
+    container_name: telegram-rewards-bot
+    restart: unless-stopped
+    environment:
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+    volumes:
+      # Mount the database file for persistence
+      - ./bot.db:/app/bot.db
+      # Mount images directory for Town Mall photos
+      - ./images:/app/images
+      # Mount backups directory
+      - ./backups:/app/backups
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

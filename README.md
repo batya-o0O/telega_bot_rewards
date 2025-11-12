@@ -109,9 +109,26 @@ python migrations/migrate_remove_old_points.py
 - **Reset for production**: `python scripts/reset_for_production.py`
 - **Give test points**: `python scripts/give_test_points.py`
 
+## Deployment
+
+Ready to host your bot? See [docs/HOSTING.md](docs/HOSTING.md) for comprehensive deployment guides covering:
+
+- **VPS Hosting** (DigitalOcean, Hetzner, Linode) - Recommended for production
+- **Railway** - Quick deployment with free tier
+- **Docker** - Containerized deployment
+- **PythonAnywhere** - Beginner-friendly hosting
+
+Quick deploy with Docker:
+```bash
+cp .env.example .env
+# Edit .env with your bot token
+docker-compose up -d
+```
+
 ## Documentation
 
 See the `docs/` folder for detailed documentation:
+- [HOSTING.md](docs/HOSTING.md) - Complete hosting and deployment guide
 - Feature implementation status
 - Change logs
 - Setup guides
