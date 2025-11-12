@@ -1,7 +1,29 @@
+# Environment
 .env
-__pycache__/
-*.pyc
-*.db
 venv/
 .venv/
-rewards_bot/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Backups (keep folder but not contents)
+backups/*
+!backups/.gitkeep
+
+# Temporary files
+*.tmp
+*.log
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
