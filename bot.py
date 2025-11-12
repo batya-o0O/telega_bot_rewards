@@ -47,7 +47,7 @@ from handlers import (
     delete_habit_list, delete_habit_confirm,
     my_stats, calendar_view, habit_calendar_view,
     # Rewards
-    reward_shop, view_shop, buy_reward,
+    reward_shop, view_shop, bazar, bazar_own_item, buy_reward,
     payment_select_type, payment_add_amount, show_payment_screen,
     payment_clear, payment_confirm,
     my_rewards, add_reward_start, add_reward_get_details, add_reward_finish,
@@ -187,6 +187,8 @@ def main():
     # Reward shop
     application.add_handler(CallbackQueryHandler(reward_shop, pattern="^reward_shop$"))
     application.add_handler(CallbackQueryHandler(view_shop, pattern=r"^view_shop_\d+$"))
+    application.add_handler(CallbackQueryHandler(bazar, pattern="^bazar$"))
+    application.add_handler(CallbackQueryHandler(bazar_own_item, pattern=r"^bazar_own_\d+$"))
     application.add_handler(CallbackQueryHandler(buy_reward, pattern=r"^buy_reward_\d+$"))
 
     # Payment selection handlers (for 'any' rewards)

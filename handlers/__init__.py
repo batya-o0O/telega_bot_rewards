@@ -46,6 +46,8 @@ from .habits import (
 from .rewards import (
     reward_shop,
     view_shop,
+    bazar,
+    bazar_own_item,
     buy_reward,
     payment_select_type,
     payment_add_amount,
@@ -120,6 +122,8 @@ __all__ = [
     # Rewards
     'reward_shop',
     'view_shop',
+    'bazar',
+    'bazar_own_item',
     'buy_reward',
     'payment_select_type',
     'payment_add_amount',

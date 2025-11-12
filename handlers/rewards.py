@@ -39,6 +39,10 @@ async def reward_shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     members = db.get_group_members(group_id)
 
     keyboard = []
+
+    # Add Bazar button at the top
+    keyboard.append([InlineKeyboardButton("🏪 Bazar (All Items)", callback_data="bazar")])
+
     for member in members:
         member_id = member[0]
         name = member[2] or member[1] or f"User {member_id}"
@@ -93,6 +97,66 @@ async def view_shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 keyboard.append([InlineKeyboardButton(
                     f"Buy: {reward_name} ({price} {type_emoji})",
                     callback_data=f"buy_reward_{reward_id}"
+                )])
+
+        keyboard.append([InlineKeyboardButton("Back", callback_data="reward_shop")])
+
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+
+
+async def bazar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show all rewards from all group members, sorted by price"""
+    query = update.callback_query
+    await query.answer()
+
+    user_id = update.effective_user.id
+    user_data = db.get_user(user_id)
+
+    if not user_data or not user_data[3]:
+        await query.edit_message_text("You need to join a group first!")
+        return
+
+    group_id = user_data[3]
+    rewards = db.get_all_group_rewards(group_id)
+    user_points = db.get_user_points(user_id)
+
+    if not rewards:
+        text = "🏪 Bazar\n\nNo rewards available in the group yet."
+        keyboard = [[InlineKeyboardButton("Back", callback_data="reward_shop")]]
+    else:
+        text = f"🏪 Bazar - All Items (sorted by price)\n\nYour Points:\n{format_points_display(user_points)}\n\n"
+        keyboard = []
+
+        for reward in rewards:
+            # Reward columns: id, owner_id, name, price, description, is_active, point_type, created_at
+            # Plus joined columns: owner_name, owner_username
+            reward_id = reward[0]
+            owner_id = reward[1]
+            reward_name = reward[2]
+            price = reward[3]
+            point_type = reward[6] if len(reward) > 6 else 'other'
+            owner_name = reward[8] if len(reward) > 8 else None
+            owner_username = reward[9] if len(reward) > 9 else None
+
+            # Get owner display name
+            owner_display = owner_name or owner_username or f"User {owner_id}"
+
+            type_emoji = POINT_TYPES.get(point_type, '⭐')
+            type_name = point_type.replace('_', ' ').title()
+
+            # Show owner name with each item
+            button_text = f"{reward_name} ({price} {type_emoji}) - {owner_display}"
+
+            if user_id != owner_id:  # Can't buy from yourself
+                keyboard.append([InlineKeyboardButton(
+                    button_text,
+                    callback_data=f"buy_reward_{reward_id}"
+                )])
+            else:
+                # Show but make it unclickable (your own item)
+                keyboard.append([InlineKeyboardButton(
+                    f"[Your Item] {button_text}",
+                    callback_data=f"bazar_own_{reward_id}"
                 )])
 
         keyboard.append([InlineKeyboardButton("Back", callback_data="reward_shop")])
@@ -593,3 +657,9 @@ async def delete_reward_confirm(update: Update, context: ContextTypes.DEFAULT_TY
 
     await query.edit_message_text("Reward deleted successfully!")
     await my_rewards(update, context)
+
+
+async def bazar_own_item(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Dummy callback for when user clicks their own item in bazar"""
+    query = update.callback_query
+    await query.answer("This is your own item! You can't buy from yourself.", show_alert=True)

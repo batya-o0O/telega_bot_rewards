@@ -501,6 +501,21 @@ class Database:
         conn.close()
         return rewards
 
+    def get_all_group_rewards(self, group_id: int) -> List[Tuple]:
+        """Get all rewards from all users in a group, sorted by price"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT r.*, u.name, u.username
+            FROM rewards r
+            JOIN users u ON r.owner_id = u.telegram_id
+            WHERE u.group_id = ? AND r.is_active = 1
+            ORDER BY r.price ASC
+        ''', (group_id,))
+        rewards = cursor.fetchall()
+        conn.close()
+        return rewards
+
     def delete_reward(self, reward_id: int) -> bool:
         """Delete a reward"""
         conn = self.get_connection()
