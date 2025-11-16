@@ -7,8 +7,9 @@ and management functionality.
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, ConversationHandler
+from datetime import datetime
 
-from database import Database
+from database import Database, POINT_TYPES
 from constants import CREATING_GROUP, JOINING_GROUP
 from utils.keyboards import get_main_menu_keyboard
 from utils.formatters import format_points_display, format_user_name_with_medals
@@ -136,8 +137,72 @@ async def group_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard.append(stats_buttons)
 
     # Add other navigation buttons
+    keyboard.append([InlineKeyboardButton("📅 Today's Stats", callback_data="todays_stats")])
     keyboard.append([InlineKeyboardButton("📊 Monthly Report", callback_data="monthly_report")])
     keyboard.append([InlineKeyboardButton("Back to Menu", callback_data="back_to_menu")])
+
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+
+
+async def todays_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show today's habit completions for all group members"""
+    query = update.callback_query
+    await query.answer()
+
+    user_id = update.effective_user.id
+    user_data = db.get_user(user_id)
+
+    if not user_data or not user_data[3]:
+        await query.edit_message_text("You need to join a group first!")
+        return
+
+    group_id = user_data[3]
+    group = db.get_group(group_id)
+    completions = db.get_todays_group_completions(group_id)
+
+    today_str = datetime.now().strftime('%B %d, %Y')
+    text = f"📅 Today's Stats - {today_str}\n"
+    text += f"Group: {group[1]}\n"
+    text += "=" * 30 + "\n\n"
+
+    if not completions:
+        text += "No habits completed today yet.\n\n"
+        text += "Be the first to log a habit! 💪"
+    else:
+        total_completions = 0
+        for user_data in completions:
+            name = user_data['first_name'] or user_data['username'] or f"User {user_data['telegram_id']}"
+            habits = user_data['habits']
+            total_completions += len(habits)
+
+            # Add medal decoration to name
+            name_with_medals = format_user_name_with_medals(user_data['telegram_id'], name)
+
+            text += f"👤 {name_with_medals}\n"
+
+            # Group habits by type for cleaner display
+            habits_by_type = {}
+            for habit in habits:
+                point_type = habit['point_type']
+                if point_type not in habits_by_type:
+                    habits_by_type[point_type] = []
+                habits_by_type[point_type].append(habit['name'])
+
+            # Display habits grouped by type
+            for point_type, habit_names in habits_by_type.items():
+                emoji = POINT_TYPES.get(point_type, '⭐')
+                for habit_name in habit_names:
+                    text += f"   {emoji} {habit_name}\n"
+
+            text += f"   ✅ Total: {len(habits)} habit(s)\n\n"
+
+        text += f"🎯 Group Total: {total_completions} completions today!"
+
+    keyboard = [
+        [InlineKeyboardButton("🔄 Refresh", callback_data="todays_stats")],
+        [InlineKeyboardButton("👥 Group Info", callback_data="group_info")],
+        [InlineKeyboardButton("Back to Menu", callback_data="back_to_menu")]
+    ]
 
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
 

@@ -40,7 +40,7 @@ from handlers import (
     # Groups
     create_group_start, create_group_finish,
     join_group_start, join_group_finish,
-    group_info, setgroupchat, view_user_stats,
+    group_info, todays_stats, setgroupchat, view_user_stats,
     # Habits
     my_habits, yesterday_habits, toggle_habit, toggle_yesterday_habit, manage_habits,
     add_habit_start, add_habit_get_name, add_habit_finish,
@@ -185,6 +185,7 @@ def main():
 
     # Groups and reports
     application.add_handler(CallbackQueryHandler(group_info, pattern="^group_info$"))
+    application.add_handler(CallbackQueryHandler(todays_stats, pattern="^todays_stats$"))
     application.add_handler(CallbackQueryHandler(view_user_stats, pattern=r"^view_user_stats_\d+$"))
     application.add_handler(CallbackQueryHandler(monthly_report, pattern="^monthly_report$"))
 

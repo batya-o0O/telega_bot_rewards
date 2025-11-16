@@ -21,6 +21,7 @@ from .groups import (
     join_group_start,
     join_group_finish,
     group_info,
+    todays_stats,
     setgroupchat,
     view_user_stats
 )
@@ -105,6 +106,7 @@ __all__ = [
     'join_group_start',
     'join_group_finish',
     'group_info',
+    'todays_stats',
     'setgroupchat',
     'view_user_stats',
     # Habits

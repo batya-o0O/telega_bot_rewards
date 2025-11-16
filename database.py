@@ -516,6 +516,56 @@ class Database:
         conn.close()
         return rewards
 
+    def get_todays_group_completions(self, group_id: int) -> List[Dict]:
+        """Get today's habit completions for all users in a group, sorted by user"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        # Get today's date
+        today = datetime.now().strftime('%Y-%m-%d')
+
+        # Get all completions for today for users in this group
+        cursor.execute('''
+            SELECT
+                u.telegram_id,
+                u.first_name,
+                u.username,
+                h.name as habit_name,
+                h.point_type,
+                hc.completed_at
+            FROM habit_completions hc
+            JOIN users u ON hc.user_id = u.telegram_id
+            JOIN habits h ON hc.habit_id = h.id
+            WHERE u.group_id = ? AND DATE(hc.completed_at) = ?
+            ORDER BY u.first_name ASC, hc.completed_at ASC
+        ''', (group_id, today))
+
+        completions = cursor.fetchall()
+        conn.close()
+
+        # Group completions by user
+        user_completions = {}
+        for completion in completions:
+            user_id = completion[0]
+            if user_id not in user_completions:
+                user_completions[user_id] = {
+                    'telegram_id': completion[0],
+                    'first_name': completion[1],
+                    'username': completion[2],
+                    'habits': []
+                }
+            user_completions[user_id]['habits'].append({
+                'name': completion[3],
+                'point_type': completion[4],
+                'completed_at': completion[5]
+            })
+
+        # Convert to list sorted by user name
+        result = list(user_completions.values())
+        result.sort(key=lambda x: (x['first_name'] or x['username'] or '').lower())
+
+        return result
+
     def delete_reward(self, reward_id: int) -> bool:
         """Delete a reward"""
         conn = self.get_connection()
