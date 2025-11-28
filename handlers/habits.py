@@ -184,6 +184,14 @@ async def toggle_yesterday_habit(update: Update, context: ContextTypes.DEFAULT_T
             milestone_message = f"🎖️ {user_name} earned their 3rd medal! Conversion rate bonus unlocked: 1.5:1"
             await send_group_announcement(context, group_id, milestone_message)
 
+        # Check if milestone reached (7, 15, or 30 days) - IMPORTANT: Also applies to backdated habits
+        if streak_info['new_milestone']:
+            milestone = streak_info['new_milestone']
+            message = f"🎉 Congratulations {user_name}!\n\n"
+            message += f"You've reached a {milestone}-day streak on '{habit_name}'! 🔥\n"
+            message += f"Keep up the amazing work!"
+            await send_group_announcement(context, group_id, message)
+
         # Check if habit is medaled - give coins instead of points
         if db.has_medal_for_habit(user_id, habit_id):
             # Give 0.5 coins for medaled habit

@@ -531,13 +531,13 @@ class Database:
                 u.first_name,
                 u.username,
                 h.name as habit_name,
-                h.point_type,
-                hc.completed_at
+                h.habit_type,
+                hc.completion_date
             FROM habit_completions hc
             JOIN users u ON hc.user_id = u.telegram_id
             JOIN habits h ON hc.habit_id = h.id
-            WHERE u.group_id = ? AND DATE(hc.completed_at) = ?
-            ORDER BY u.first_name ASC, hc.completed_at ASC
+            WHERE u.group_id = ? AND hc.completion_date = ?
+            ORDER BY u.first_name ASC, hc.completion_date ASC
         ''', (group_id, today))
 
         completions = cursor.fetchall()
@@ -873,37 +873,50 @@ class Database:
         ''', (user_id, habit_id))
         result = cursor.fetchone()
 
-        completion_dt = datetime.strptime(completion_date, '%Y-%m-%d').date()
+        # Get all completion dates to properly calculate streak
+        cursor.execute('''
+            SELECT completion_date
+            FROM habit_completions
+            WHERE user_id = ? AND habit_id = ?
+            ORDER BY completion_date DESC
+        ''', (user_id, habit_id))
 
-        if result:
-            current_streak, best_streak, last_date_str, m7, m15, m30 = result
-            last_date = datetime.strptime(last_date_str, '%Y-%m-%d').date() if last_date_str else None
+        all_dates = [row[0] for row in cursor.fetchall()]
 
-            # Check if this is a continuation of the streak
-            if last_date:
-                days_diff = (completion_dt - last_date).days
-                if days_diff == 1:
-                    # Continuation
-                    current_streak += 1
-                elif days_diff == 0:
-                    # Same day, no change
-                    conn.close()
-                    return {
-                        'current_streak': current_streak,
-                        'best_streak': best_streak,
-                        'new_milestone': None
-                    }
-                else:
-                    # Broken streak
-                    current_streak = 1
-                    m7 = m15 = m30 = 0  # Reset milestone announcements
-            else:
-                current_streak = 1
-        else:
-            # New streak
+        if not all_dates:
+            # No completions yet, this shouldn't happen but handle it
             current_streak = 1
-            best_streak = 0
+            best_streak = 1
             m7 = m15 = m30 = 0
+        else:
+            # Calculate current streak from most recent date backwards
+            current_streak = 1
+            for i in range(len(all_dates) - 1):
+                curr = datetime.strptime(all_dates[i], '%Y-%m-%d').date()
+                prev = datetime.strptime(all_dates[i + 1], '%Y-%m-%d').date()
+                if (curr - prev).days == 1:
+                    current_streak += 1
+                else:
+                    break
+
+            # Calculate best streak
+            best_streak = current_streak
+            temp_streak = 1
+            for i in range(len(all_dates) - 1):
+                curr = datetime.strptime(all_dates[i], '%Y-%m-%d').date()
+                prev = datetime.strptime(all_dates[i + 1], '%Y-%m-%d').date()
+                if (curr - prev).days == 1:
+                    temp_streak += 1
+                    if temp_streak > best_streak:
+                        best_streak = temp_streak
+                else:
+                    temp_streak = 1
+
+            # Get milestone flags from existing record
+            if result:
+                _, _, _, m7, m15, m30 = result
+            else:
+                m7 = m15 = m30 = 0
 
         # Update best streak
         if current_streak > best_streak:
@@ -921,13 +934,14 @@ class Database:
             new_milestone = 7
             m7 = 1
 
-        # Update or insert streak record
+        # Update or insert streak record (use most recent date from all_dates)
+        most_recent_date = all_dates[0] if all_dates else completion_date
         cursor.execute('''
             INSERT OR REPLACE INTO habit_streaks
             (user_id, habit_id, current_streak, best_streak, last_completion_date,
              milestone_7_announced, milestone_15_announced, milestone_30_announced)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (user_id, habit_id, current_streak, best_streak, completion_date, m7, m15, m30))
+        ''', (user_id, habit_id, current_streak, best_streak, most_recent_date, m7, m15, m30))
 
         conn.commit()
         conn.close()

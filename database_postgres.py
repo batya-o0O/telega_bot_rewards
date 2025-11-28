@@ -592,7 +592,7 @@ class Database:
                     u.first_name,
                     u.username,
                     h.name as habit_name,
-                    h.point_type,
+                    h.habit_type,
                     hc.completed_at
                 FROM habit_completions hc
                 JOIN users u ON hc.user_id = u.telegram_id

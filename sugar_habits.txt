@@ -1,0 +1,3 @@
+All Sugar habits in database:
+============================================================
+ID: 9, Group: 1, Name: no sugar day, Type: food_related

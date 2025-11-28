@@ -170,6 +170,8 @@ async def todays_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text += "Be the first to log a habit! 💪"
     else:
         total_completions = 0
+        habit_counts = {}  # Track how many times each habit was completed
+
         for user_data in completions:
             name = user_data['first_name'] or user_data['username'] or f"User {user_data['telegram_id']}"
             habits = user_data['habits']
@@ -184,9 +186,15 @@ async def todays_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
             habits_by_type = {}
             for habit in habits:
                 point_type = habit['point_type']
+                habit_name = habit['name']
                 if point_type not in habits_by_type:
                     habits_by_type[point_type] = []
-                habits_by_type[point_type].append(habit['name'])
+                habits_by_type[point_type].append(habit_name)
+
+                # Count habit completions for summary
+                if habit_name not in habit_counts:
+                    habit_counts[habit_name] = {'count': 0, 'type': point_type}
+                habit_counts[habit_name]['count'] += 1
 
             # Display habits grouped by type
             for point_type, habit_names in habits_by_type.items():
@@ -194,9 +202,16 @@ async def todays_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 for habit_name in habit_names:
                     text += f"   {emoji} {habit_name}\n"
 
-            text += f"   ✅ Total: {len(habits)} habit(s)\n\n"
+            text += "\n"
 
-        text += f"🎯 Group Total: {total_completions} completions today!"
+        # Show habit completion summary
+        text += "📊 Habit Summary:\n"
+        sorted_habits = sorted(habit_counts.items(), key=lambda x: x[1]['count'], reverse=True)
+        for habit_name, data in sorted_habits:
+            emoji = POINT_TYPES.get(data['type'], '⭐')
+            text += f"   {emoji} {habit_name}: {data['count']}x\n"
+
+        text += f"\n🎯 Group Total: {total_completions} completions today!"
 
     keyboard = [
         [InlineKeyboardButton("🔄 Refresh", callback_data="todays_stats")],

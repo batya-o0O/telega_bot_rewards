@@ -1,0 +1,12 @@
+Detailed Sugar Streak Records:
+============================================================
+User ID: 499803988, Name: Ayan
+Habit ID: 9, Habit: no sugar day
+Streak: 1, Last: 2025-11-12
+7-day announced: 0
+------------------------------------------------------------
+User ID: 292371368, Name: timur
+Habit ID: 9, Habit: no sugar day
+Streak: 3, Last: 2025-11-19
+7-day announced: 0
+------------------------------------------------------------
